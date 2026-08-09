@@ -2,8 +2,8 @@
 
 - 文書種別: GitHub Pages・環境分離・GitHub Actions権限・未告知運用
 - 作成日: 2026-08-09
-- 版: 1.0
-- 状態: G1-A開始前
+- 版: 1.1
+- 状態: G1-A実装中
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [推奨実装計画書](./IMPLEMENTATION_PLAN.md)
@@ -75,7 +75,7 @@ URLを案内しなくても、次を完全には防げない。
 
 ### 3.1 G7承認前
 
-GitHub Pagesの成果物は次の構成を第一候補とする。
+G1-Aで、GitHub Pagesの成果物を次の構成に固定する。
 
 ```text
 /
@@ -168,12 +168,15 @@ G1、G2、GA、VS、CCBの未完成版を本番ルートへ自動配置しない
 
 開発確認ページへの配置は、信頼済みブランチだけを対象とする専用ワークフローで行う。
 
-第一候補:
+G1-Aの初回構築では、専用内部ブランチ`agent/g1a-technical-foundation`のpush時だけ起動する。同じワークフロー内で自動試験を再実行し、成功した成果物だけを配置する。
 
-- 同一リポジトリ内pull requestで、明示条件を満たした時だけ更新
-- または`workflow_dispatch`でブランチとコミットを明示して更新
+初回配置前にGitHub Environment `github-pages`へユーザー本人の必須reviewerと、bootstrap push用`agent/g1a-technical-foundation`および手動更新・cleanup用`main`だけを許可するdeployment branch ruleを設定する。その確認後にだけRepository variable `DEVELOPMENT_PREVIEW_ENABLED=true`を設定する。ブランチ上のworkflow自身が変更可能であるため、このEnvironment保護と明示スイッチを初回bootstrapの前提とする。設定を確認できない場合は、検査成果物までで停止し、Pages配置を完了扱いにしない。
+
+mainへ専用ワークフローを取り込んだ後は、`workflow_dispatch`で同一リポジトリ内の信頼済みrefと表示名を明示して更新できる。G1-A / G1-Bの専用内部ブランチをallowlistし、checkoutしたSHAが対象ブランチの現在tipと一致する場合だけ実行する。`refs/pull/*`とallowlist外のSHAは拒否する。
 
 確認ページは一件だけなので、後から実行された承認済みビルドで置き換える。
+
+終了処理は`workflow_dispatch`専用の別ワークフローで、開発中案内と`robots.txt`だけを含む成果物へ全体を置き換える。G1-Aマージ後に実際の削除結果を確認する。
 
 ### 5.3 正式版公開
 
@@ -297,7 +300,7 @@ permissions:
 
 次を分ける。
 
-- `development-preview`
+- `github-pages`: G1-A / G1-Bの開発確認枠。ユーザー本人の必須reviewerと、bootstrap push用`agent/g1a-technical-foundation`および手動更新・cleanup用`main`のみを許可する制限を設定。確認後にだけ`DEVELOPMENT_PREVIEW_ENABLED=true`とする。内容refのG1-A / G1-B allowlistはワークフロー内で別に検査する
 - `production`
 
 `production`はG7まで使用しない。正式公開時はユーザー本人の承認を必要とする。
@@ -342,14 +345,14 @@ GitHubホスト型ランナーでは、ジョブごとに環境が分かれる�
 
 `install`ジョブで作った`node_modules`が別ジョブへ自動共有されるとは考えない。
 
-第一候補:
+実装済みの構成:
 
 - 各ジョブで`npm ci`
 - npmキャッシュで取得を短縮
 - ビルド成果物だけArtifactで渡す
 - `node_modules`全体をArtifactで渡さない
 
-G1-Aで、実行時間と保守性を見て次のどちらかを選ぶ。
+G1-Aでは、品質検査を一ジョブにまとめ、ブラウザ検査をChromium / WebKitの行列に分ける。実行時間が許容範囲を超えた場合だけ、次を再検討する。
 
 - 型検査・静的検査・単体試験を一つのジョブへまとめる
 - 複数ジョブでそれぞれ`npm ci`する

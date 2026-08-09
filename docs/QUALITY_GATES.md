@@ -3,8 +3,8 @@
 - 文書種別: 事前固定する合否基準
 - 作成日: 2026-08-09
 - 最終更新日: 2026-08-09
-- 版: 2.0
-- 状態: G1-A開始前・敵対的検証反映
+- 版: 2.1
+- 状態: G1-A検証中・固定環境CI通過、Pages、実機確認待ち
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [ゲーム制作・プロデュース計画書](./GAME_PRODUCTION_PLAN.md)
@@ -147,6 +147,8 @@ pull requestと`main`で次が成功する。
 - `robots.txt`
 - 確認ページへ環境名、対象、コミットSHAを表示
 - Pagesは公開URLであり秘密ではない旨を計画と画面で扱う
+- `github-pages` Environmentにユーザー本人の必須reviewerと、bootstrap用`agent/g1a-technical-foundation`＋手動更新・cleanup用`main`だけのdeployment branch ruleを設定
+- Environment保護確認後の`DEVELOPMENT_PREVIEW_ENABLED=true`がなければdeployをskip
 - `main`への取り込みだけで正式版を公開しない
 - 正式公開はG7と手動承認が必要
 
@@ -179,6 +181,8 @@ Chromium、WebKitで次が成功。
 - 環境表示
 - コミットSHA表示
 - WebGL初期化失敗案内
+- WebGL以外へのfallbackを成功扱いにせず、WebGL非対応時は案内へ安全停止
+- 実行中のWebGL context lossでループ0件・入力無効・再読み込み案内へ遷移
 - キーボードで開始・停止
 - 320px、390px、430px表示
 - 横画面案内

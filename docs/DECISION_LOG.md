@@ -3,7 +3,7 @@
 - 文書種別: 重要決定・検証仕様・未決定事項
 - 作成日: 2026-08-09
 - 最終更新日: 2026-08-09
-- 版: 1.3
+- 版: 1.4
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 
 ## 1. 運用方法
@@ -148,22 +148,27 @@
 
 ### D-014 実行時パッケージ
 
-- 状態: 検証仕様として決定
+- 状態: 決定
 - 決定:
-  - 描画: `pixi.js` 8.19.0候補
-  - 物理: `planck` 1.5.0候補
+  - 描画: `pixi.js` 8.19.0
+  - 物理: `planck` 1.5.0
   - 旧`planck-js`は使わない
-- 確定: G1-A互換性確認後
+- 範囲: G1-Aでは`planck`の読込確認だけを行い、物理品質と採否はG1-Bで判断
 
 ### D-015 開発用パッケージ
 
-- 状態: 検証仕様として決定
+- 状態: 決定
 - 決定:
-  - Node.js 24系LTS
-  - Vite 8.1.5候補
-  - Vitest 4.1.10候補
-  - Playwright Test 1.61.1候補
-  - TypeScript、ESLint、typescript-eslint、npm、`@types/node`はG1-Aで固定
+  - Node.js 24.19.0 LTS
+  - npm 11.17.0
+  - Vite 8.1.5
+  - Vitest 4.1.10
+  - Playwright Test 1.61.1
+  - TypeScript 6.0.3
+  - ESLint 10.8.1
+  - typescript-eslint 8.66.0
+  - `@types/node` 24.13.3
+- 記録: `package.json`、`package-lock.json`、`.nvmrc`、CI、依存ライセンス一覧
 
 ### D-016 lockと更新
 
@@ -335,10 +340,11 @@
 
 - 状態: 決定
 - 決定:
-  - 別ジョブは別環境と考える
-  - `node_modules`を自動共有しない
-  - 各ジョブ`npm ci`または中心検査を一ジョブへ集約
-  - `dist`など必要な成果物だけArtifact共有
+  - 品質ジョブとブラウザジョブへ分ける
+  - 別ジョブは別環境と考え、各ジョブで`npm ci`する
+  - `node_modules`を共有しない
+  - 品質ジョブの`dist`だけをArtifactでブラウザジョブへ渡す
+  - ChromiumとWebKitをブラウザジョブで実行する
 
 ### D-035 Actions安全性
 
@@ -375,6 +381,13 @@
   - 本番ルートは開発中案内
   - 同一リポジトリ内の信頼済みブランチだけ
   - 外部フォークはCIのみ
+  - G1-Aの初回構築は専用内部ブランチのpush時に同じワークフロー内の品質確認後だけ更新
+  - 初回配置前に`github-pages` Environmentへユーザー本人の必須reviewerと、bootstrap push用`agent/g1a-technical-foundation`および手動更新・cleanup用`main`のdeployment branch ruleを設定
+  - Environment保護の確認後にだけRepository variable `DEVELOPMENT_PREVIEW_ENABLED=true`とし、未設定ではdeployをskip
+  - mainへワークフローを取り込んだ後は`workflow_dispatch`でも更新可能
+  - 手動更新はG1-A / G1-B専用内部ブランチのallowlistと現在tipの完全一致で検証し、`refs/pull/*`とallowlist外SHAを拒否
+  - 成果物全体を毎回再構築し、`_preview/current/`一件だけを置く
+  - 終了処理は手動ワークフローを用意し、G1-Aマージ後に実運用確認
 
 ### D-039 `main`と本番公開
 
@@ -420,7 +433,21 @@
 
 ---
 
-## 9. 未決定事項
+## 9. 実装組織の決定
+
+### D-044 エージェント実装の標準形
+
+- 状態: 決定
+- 最終責任: ユーザー本人
+- 企画・設計・最終判断支援: Sol・High
+- 日常実装、複雑な検査、反復確認: Luna・Max
+- 原因不明・安全性・重大判断: Sol・Extra High（xhigh）
+- 公開前独立レビュー: 実装担当とは別のSol・High
+- 運用詳細: リポジトリ直下の`AGENTS.md`
+
+---
+
+## 10. 未決定事項
 
 | ID | 項目 | 期限 | 決定条件 |
 |---|---|---|---|
@@ -430,9 +457,6 @@
 | O-004 | 代表的な仕組み | G2 | 3候補比較と市場差 |
 | O-005 | クライマックス | G2仮、VS固定 | 15秒で証明 |
 | O-006 | ショットマップ | G2 | 左右、戻り、難度 |
-| O-007 | 正確な依存版 | G1-A | `npm ci`と互換性 |
-| O-008 | CIジョブ分割 | G1-A | 実行時間と保守性 |
-| O-009 | 確認ページ自動・手動 | G1-A | 権限と安全性 |
 | O-010 | 確認ページ終了後処理 | G1-Aマージ後 | 実運用確認 |
 | O-011 | 60物理Hzか120物理Hz | G1-B | 品質と性能 |
 | O-012 | 発射操作 | G1-B | 引く方式と長押し比較 |
@@ -442,7 +466,7 @@
 
 ---
 
-## 10. 直近の順序
+## 11. 直近の順序
 
 1. 現在の計画改訂を取り込む
 2. G0.5市場・名称調査
