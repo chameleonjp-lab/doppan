@@ -3,8 +3,8 @@
 - 文書種別: CI・ブラウザ試験・iPhone実機確認・GitHub Pages確認枠
 - 作成日: 2026-08-09
 - 最終更新日: 2026-08-09
-- 版: 2.0
-- 状態: G1-A開始前
+- 版: 2.1
+- 状態: G1-A実装中
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [ゲームエンジン設計](./ENGINEERING_ARCHITECTURE.md)
@@ -42,6 +42,8 @@ Pagesの権限、未告知運用、保存分離は[公開・プレビュー・�
 - PixiJSと一つの更新ループを起動する
 
 G1-Aではピンボール物理の品質を判定しない。
+
+`planck`の版とlockの互換性を確かめるため、G1-Aでは最小の物理世界・動的body・1ステップだけの読込確認を行う。衝突や操作感の物理シナリオ試験はG1-Bから開始する。
 
 ### G1-B: ピンボール技術試作
 
@@ -98,7 +100,7 @@ CIはPagesへ公開しない。
 
 ### 4.2 品質ジョブ
 
-第一候補は、次を一つのジョブで連続実行する。
+G1-Aでは、次を一つの品質ジョブで連続実行する。
 
 1. Node.jsとnpmの版確認
 2. `npm ci`
@@ -137,13 +139,21 @@ Firefoxは追加負担が小さい場合だけ起動確認する。
 
 - 信頼済みブランチをGitHub Pagesの確認枠へ出す
 
-第一候補:
+G1-Aの初回構築:
+
+- 配置前に`github-pages` Environmentへユーザー本人の必須reviewerと、bootstrap push用`agent/g1a-technical-foundation`および手動更新・cleanup用`main`だけを許可するdeployment branch ruleを設定する
+- 上記保護の確認後にだけRepository variable `DEVELOPMENT_PREVIEW_ENABLED=true`を設定する。未設定なら検査Artifactまででdeployをskipする
+- 専用内部ブランチ`agent/g1a-technical-foundation`のpushだけを自動対象にする
+- 同じワークフロー内で型、静的、単体、読込、ビルド、Chromium、WebKitを再確認してから配置する
+- リポジトリ名とブランチ名をジョブ条件で再検査する
+
+mainへワークフローを取り込んだ後:
 
 - `workflow_dispatch`
-- 入力: branchまたはcommit SHA、表示名、pull request番号
-- CI成功済みのコミットだけを対象
-
-自動配置を使う場合も、同一リポジトリ内の信頼済みpull requestへ限定する。
+- 入力: branchまたはcommit SHA、表示名
+- 同一リポジトリ内の信頼済みrefだけを対象
+- G1-A / G1-Bの専用内部ブランチを明示allowlistし、checkoutしたSHAが対象ブランチの現在tipと一致する場合だけ実行
+- `refs/pull/*`とallowlist外のSHAを拒否
 
 外部フォークでは実行しない。
 
@@ -160,7 +170,7 @@ G7まで使用しない。
 
 ### 4.6 `preview-cleanup.yml`
 
-確認対象のpull request終了後、または手動実行で、Pages成果物から確認ページを外す。
+G1-Aでは`workflow_dispatch`による手動実行で、Pages成果物から確認ページを外す。自動終了処理は、別の確認対象を誤って消す競合条件を設計してから再判断する。
 
 終了後削除の確認は、G1-Aのpull requestをマージした後に記録する。一つのpull request内だけで終了後処理まで完了扱いにしない。
 
@@ -168,19 +178,19 @@ G7まで使用しない。
 
 ## 5. GitHub Pagesの確認枠
 
-G7前の第一候補:
+G1-Aで固定したG7前の構成:
 
 ```text
 本番ルート:
-https://chameleonjp-lab.github.io/doppan/
+<GitHub Pagesのプロジェクトルート>
   → 開発中の静的案内だけ
 
 確認枠:
-https://chameleonjp-lab.github.io/doppan/_preview/current/
+<プロジェクトルート>/_preview/current/
   → 現在確認中の信頼済みブランチ一件
 ```
 
-このURLは外部へ案内しない。ただし公開URLであり、推測アクセスを完全には防げない。
+実URLはREADMEや本書へ固定せず、ユーザー本人がActionsのdeployment summaryから開く。このURLは外部へ案内しない。ただし公開URLであり、推測アクセスを完全には防げない。
 
 ### 5.1 一件だけにする理由
 

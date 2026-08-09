@@ -3,8 +3,8 @@
 - 文書種別: ゲームループ・入力・物理イベント・状態管理・盤面実行状態
 - 作成日: 2026-08-09
 - 最終更新日: 2026-08-09
-- 版: 2.0
-- 状態: G1-A / G1-B開始前
+- 版: 2.1
+- 状態: G1-A実装中・G1-B開始前
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [推奨実装計画書](./IMPLEMENTATION_PLAN.md)
@@ -37,23 +37,23 @@
 
 ---
 
-## 2. 依存関係の初期候補
+## 2. G1-Aで固定した依存関係
 
 実装では、パッケージ名と版を`package.json`と`package-lock.json`へ固定する。
 
-| 用途 | 初期候補 | 備考 |
+| 用途 | 固定版 | 備考 |
 |---|---|---|
-| Node.js | 24系LTSの検証済み版 | GitHub Actionsで正確な版を固定 |
-| npm | Node.js候補と組み合わせて固定 | CIで`npm --version`を確認 |
-| TypeScript | G1-Aで互換性確認した版 | 開発用依存 |
-| PixiJS | `pixi.js` 8.19.0候補 | 実行時依存 |
-| Planck.js | `planck` 1.5.0候補 | 旧`planck-js`を使わない |
-| Vite | 8.1.5候補 | 開発・ビルド |
-| Vitest | 4.1.10候補 | 単体・物理試験 |
-| Playwright Test | 1.61.1候補 | ブラウザ試験 |
-| ESLint | G1-Aで互換性確認した版 | 静的検査 |
-| typescript-eslint | G1-Aで互換性確認した版 | TypeScript用規則 |
-| `@types/node` | Node.js候補と整合する版 | 開発用型 |
+| Node.js | 24.19.0 | GitHub Actionsと`.nvmrc`で固定 |
+| npm | 11.17.0 | `packageManager`とCIで固定 |
+| TypeScript | 6.0.3 | 開発用依存 |
+| PixiJS | `pixi.js` 8.19.0 | 実行時依存 |
+| Planck.js | `planck` 1.5.0 | G1-Aは読込確認のみ。旧`planck-js`を使わない |
+| Vite | 8.1.5 | 開発・ビルド |
+| Vitest | 4.1.10 | 単体・Planck読込確認 |
+| Playwright Test | 1.61.1 | Chromium・WebKit試験 |
+| ESLint | 10.8.1 | 静的検査 |
+| typescript-eslint | 8.66.0 | TypeScript用規則 |
+| `@types/node` | 24.13.3 | 開発用型 |
 
 方針:
 

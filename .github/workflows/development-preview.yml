@@ -1,0 +1,169 @@
+name: Development preview
+
+on:
+  push:
+    branches:
+      - agent/g1a-technical-foundation
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Checkout ref for this same-repository preview"
+        required: true
+        default: agent/g1a-technical-foundation
+        type: string
+      display_name:
+        description: "Build label shown on the boot screen"
+        required: true
+        default: DEVELOPMENT PREVIEW
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-development-preview
+  cancel-in-progress: true
+
+env:
+  VITE_BUILD_ENV: development-preview
+  VITE_BUILD_TARGET: GitHub Pages / development-preview
+
+jobs:
+  build:
+    if: >-
+      github.repository == 'chameleonjp-lab/doppan' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/agent/g1a-technical-foundation'))
+    name: verify development preview
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      commit_sha: ${{ steps.metadata.outputs.commit_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify trusted preview ref
+        env:
+          REQUESTED_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+        run: |
+          test "$GITHUB_EVENT_NAME" != "push" || \
+            test "$GITHUB_REF" = "refs/heads/agent/g1a-technical-foundation"
+          case "$REQUESTED_REF" in
+            refs/pull/*) exit 1 ;;
+          esac
+          checked_sha=$(git rev-parse HEAD)
+          trusted=false
+          for trusted_ref in \
+            refs/remotes/origin/agent/g1a-technical-foundation \
+            refs/remotes/origin/agent/g1b-physics-prototype
+          do
+            if trusted_sha=$(git rev-parse --verify "${trusted_ref}^{commit}" 2>/dev/null) && \
+              test "$checked_sha" = "$trusted_sha"
+            then
+              trusted=true
+              break
+            fi
+          done
+          test "$trusted" = true
+      - name: Resolve exact build metadata
+        id: metadata
+        env:
+          PREVIEW_LABEL: ${{ github.event_name == 'workflow_dispatch' && inputs.display_name || 'DEVELOPMENT PREVIEW' }}
+        run: |
+          safe_label=${PREVIEW_LABEL//$'\n'/ }
+          safe_label=${safe_label//$'\r'/ }
+          commit_sha=$(git rev-parse HEAD)
+          echo "commit_sha=${commit_sha}" >> "$GITHUB_OUTPUT"
+          echo "VITE_COMMIT_SHA=${commit_sha}" >> "$GITHUB_ENV"
+          echo "VITE_BUILD_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "VITE_BUILD_TARGET=GitHub Pages / ${safe_label}" >> "$GITHUB_ENV"
+      - name: Setup Node 24.19.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - name: Verify Node and npm versions
+        run: |
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit and physics tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Gzip size budget
+        run: npm run size
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Browser tests
+        run: npm run test:browser
+      - name: Upload verified dist
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: verified-dist
+          path: dist
+          if-no-files-found: error
+
+  deploy:
+    if: >-
+      github.repository == 'chameleonjp-lab/doppan' &&
+      vars.DEVELOPMENT_PREVIEW_ENABLED == 'true'
+    needs: build
+    name: publish development preview
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.build.outputs.commit_sha }}
+          persist-credentials: false
+      - name: Download verified dist
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          name: verified-dist
+          path: _verified-dist
+      - name: Verify deployment inputs
+        run: |
+          test "$(git ls-tree HEAD pages/root/root-guide.html | cut -d' ' -f1)" = "100644"
+          test "$(git ls-tree HEAD pages/root/robots.txt | cut -d' ' -f1)" = "100644"
+          test -f pages/root/root-guide.html
+          test ! -L pages/root/root-guide.html
+          test -f pages/root/robots.txt
+          test ! -L pages/root/robots.txt
+          test -f _verified-dist/index.html
+          test -f _verified-dist/robots.txt
+          test -n "$(find _verified-dist/assets -type f -name '*.js' -print -quit)"
+          test -z "$(find _verified-dist -type l -print -quit)"
+      - name: Rebuild Pages tree (root guide + current preview)
+        run: |
+          rm -rf _site
+          mkdir -p _site/_preview/current
+          cp pages/root/root-guide.html _site/index.html
+          cp pages/root/robots.txt _site/robots.txt
+          cp -R _verified-dist/. _site/_preview/current/
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
+        with:
+          path: _site
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128

@@ -3,8 +3,8 @@
 - 文書種別: 技術方針・実装工程・完成条件
 - 初版作成日: 2026-08-09
 - 最終更新日: 2026-08-09
-- 版: 5.0
-- 状態: G1-A開始前・敵対的検証反映
+- 版: 5.1
+- 状態: G1-A実装中・自動試験と実機確認待ち
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 上位文書: [ゲーム制作・プロデュース計画書](./GAME_PRODUCTION_PLAN.md)
 - 技術の正本:
@@ -43,28 +43,29 @@ GitHub Pages、未告知運用、Actions権限、本番公開は[公開・プレ
 
 ### 2.1 実行時
 
-| 用途 | 初期候補 |
+| 用途 | 固定構成 |
 |---|---|
 | 言語 | TypeScript |
-| 描画 | `pixi.js` 8.19.0候補 |
-| 物理 | `planck` 1.5.0候補 |
+| 描画 | `pixi.js` 8.19.0 |
+| 物理 | `planck` 1.5.0。G1-Aは最小world/body/1ステップの読込確認のみ |
 | 公開 | GitHub Pages |
 
 旧パッケージ名`planck-js`は使わない。
 
 ### 2.2 開発時
 
-| 用途 | 初期候補 |
+| 用途 | 固定版 |
 |---|---|
-| Node.js | 24系LTSの検証済み版 |
-| npm | Node.jsと組み合わせて固定 |
-| ビルド | Vite 8.1.5候補 |
-| 単体・物理試験 | Vitest 4.1.10候補 |
-| ブラウザ試験 | Playwright Test 1.61.1候補 |
-| 静的検査 | ESLint + typescript-eslint |
-| Node.js型 | `@types/node` |
+| Node.js | 24.19.0 LTS |
+| npm | 11.17.0 |
+| ビルド | Vite 8.1.5 |
+| 単体・物理試験 | Vitest 4.1.10 |
+| ブラウザ試験 | Playwright Test 1.61.1 |
+| 言語検査 | TypeScript 6.0.3 |
+| 静的検査 | ESLint 10.8.1 + typescript-eslint 8.66.0 |
+| Node.js型 | `@types/node` 24.13.3 |
 
-TypeScript、ESLint、typescript-eslint、npm、`@types/node`の正確な版はG1-Aで互換性を確認して固定する。
+G1-Aでは`planck`をlockへ含め、最小の物理世界・動的body・1ステップだけの読込確認を行う。衝突、フリッパー、性能、継続可否はG1-Bで判定する。
 
 ### 2.3 版固定
 
@@ -446,7 +447,7 @@ G1では基盤だけ先に用意する。
 
 ## 14. 性能と容量
 
-暫定目標:
+固定した初期目標:
 
 - JavaScriptとCSS: gzip後600KB以内
 - 初回画像: 1.5MB以内
