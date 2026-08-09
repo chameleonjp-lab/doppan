@@ -3,7 +3,7 @@
 - 文書種別: 現在地・停止条件・次作業
 - 更新日: 2026-08-09
 - 正本対象: `main`
-- 現在の段階: G0通過 / G0.5未着手 / G1-A実装中
+- 現在の段階: G0通過 / G0.5未着手 / G1-A検証中
 
 ## 1. この文書の使い方
 
@@ -22,7 +22,7 @@
 | 計画体系 | 改訂済み | プロデューサー、ゲームエンジニア、敵対的検証を反映 |
 | G0 制作目的 | 通過 | カメレオンJPの代表作候補として制作 |
 | G0.5 市場・名称 | 未着手 | 8〜12作品比較と名称確認 |
-| G1-A 技術基盤 | 実装中 | 基盤作成済み。PR上のCI、Pages、iPhone確認待ち |
+| G1-A 技術基盤 | 検証中 | 固定環境CIと未告知確認ビルドは通過。Pages配置、iPhone確認待ち |
 | G1-B 物理試作 | 開始禁止 | G1-A通過後に開始 |
 | G2 中心体験 | 未着手 | 代表的な仕組み、意味のテーマ、ショットマップ |
 | GA グレー版アルファ | 開始禁止 | G0.5、G1-A、G1-B、G2通過が必要 |
@@ -61,12 +61,11 @@ G0.5とG1-Aは並行可能。
 
 ### G1-A
 
-1. pull request上のCIで`npm ci`、Chromium、WebKitを確認していない
-2. `github-pages` Environmentの必須reviewerと、bootstrap push用`agent/g1a-technical-foundation`および手動更新・cleanup用`main`のdeployment branch ruleを確認しておらず、`DEVELOPMENT_PREVIEW_ENABLED`も未有効化
-3. GitHub Pagesの未告知確認枠を実際に配置していない
-4. 本番ルートと確認枠の成果物構成を実URLで確認していない
-5. iPhone Safariで環境表示、画面高さ、検索除外、保存環境を確認していない
-6. G1-Aマージ後の確認ページ終了処理を確認していない
+1. `github-pages` Environmentの必須reviewerと、bootstrap push用`agent/g1a-technical-foundation`および手動更新・cleanup用`main`のdeployment branch ruleを確認しておらず、`DEVELOPMENT_PREVIEW_ENABLED`も未有効化
+2. GitHub Pagesの未告知確認枠を実際に配置していない
+3. 本番ルートと確認枠の成果物構成を実URLで確認していない
+4. iPhone Safariで環境表示、画面高さ、検索除外、保存環境を確認していない
+5. G1-Aマージ後の確認ページ終了処理を確認していない
 
 ### G1-B
 
@@ -89,15 +88,14 @@ G0.5とG1-Aは並行可能。
 順序:
 
 1. G0.5市場・名称調査を開始
-2. G1-A技術基盤のDraft PRでCIを通す
-3. `github-pages` Environmentの必須reviewerとdeployment branch ruleを設定後、`DEVELOPMENT_PREVIEW_ENABLED=true`とする
-4. 未告知確認枠を配置し、本番ルートとの分離を確認
-5. G1-AをiPhone Safariで確認
-6. G1-Aマージ後、確認ページ終了処理を後続確認
-7. G1-B物理試作のDraft PR
-8. Vitest、Playwright、iPhone・iPad結果
-9. Planck.js、物理Hz、発射、球受けの判断
-10. G2で中心体験とショットマップを確定
+2. `github-pages` Environmentの必須reviewerとdeployment branch ruleを設定後、`DEVELOPMENT_PREVIEW_ENABLED=true`とする
+3. 未告知確認枠を配置し、本番ルートとの分離を確認
+4. G1-AをiPhone Safariで確認
+5. G1-Aマージ後、確認ページ終了処理を後続確認
+6. G1-B物理試作のDraft PR
+7. Vitest、Playwright、iPhone・iPad結果
+8. Planck.js、物理Hz、発射、球受けの判断
+9. G2で中心体験とショットマップを確定
 
 ---
 

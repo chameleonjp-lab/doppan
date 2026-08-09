@@ -7,8 +7,19 @@
     <title>DOPPAN — 公開前案内</title>
     <style>
       :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0b1020; color: #f5f7fb; }
-      body { display: grid; min-height: 100svh; margin: 0; place-items: center; }
-      main { width: min(680px, calc(100% - 40px)); padding: 32px; border: 1px solid #34405f; border-radius: 24px; background: #111a31; }
+      * { box-sizing: border-box; }
+      body {
+        display: grid;
+        min-height: 100svh;
+        margin: 0;
+        padding:
+          calc(20px + env(safe-area-inset-top))
+          calc(20px + env(safe-area-inset-right))
+          calc(20px + env(safe-area-inset-bottom))
+          calc(20px + env(safe-area-inset-left));
+        place-items: center;
+      }
+      main { width: min(680px, 100%); padding: 32px; border: 1px solid #34405f; border-radius: 24px; background: #111a31; }
       p { color: #b9c4d9; line-height: 1.7; }
       .eyebrow { color: #79e2c2; font-size: .75rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
     </style>

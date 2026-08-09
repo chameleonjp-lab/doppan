@@ -571,7 +571,7 @@ G1-BもG0.5と並行できるが、GAは次がすべて通過するまで開始�
 推奨ブランチ:
 
 ```text
-agent/g1a-tooling-preview
+agent/g1a-technical-foundation
 agent/g1b-physics-prototype
 agent/core-experience-and-shot-map
 agent/graybox-alpha

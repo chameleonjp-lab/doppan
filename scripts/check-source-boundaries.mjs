@@ -42,6 +42,38 @@ for (const file of files) {
     }
   }
 
+  const namedPixiImports = source.matchAll(
+    /import\s+(?:type\s+)?\{([^;]*?)\}\s+from\s+["']pixi\.js(?:\/[^"']*)?["']/gu,
+  );
+  for (const match of namedPixiImports) {
+    if (/\b(?:Application|Ticker)\b/u.test(match[1] ?? "")) {
+      violations.push(`${normalized}: Pixi Application/Ticker ownership is forbidden`);
+    }
+  }
+
+  const namedPixiExports = source.matchAll(
+    /export\s+(?:type\s+)?\{([^;]*?)\}\s+from\s+["']pixi\.js(?:\/[^"']*)?["']/gu,
+  );
+  for (const match of namedPixiExports) {
+    if (/\b(?:Application|Ticker)\b/u.test(match[1] ?? "")) {
+      violations.push(`${normalized}: Pixi Application/Ticker re-export is forbidden`);
+    }
+  }
+
+  if (
+    /import\s+\*\s+as\s+[A-Za-z_$][\w$]*\s+from\s+["']pixi\.js(?:\/[^"']*)?["']/u.test(source) ||
+    /import\s+[A-Za-z_$][\w$]*(?:\s*,\s*\{[^;]*\})?\s+from\s+["']pixi\.js(?:\/[^"']*)?["']/u.test(source) ||
+    /import\s*\(\s*["']pixi\.js(?:\/[^"']*)?["']\s*\)/u.test(source)
+  ) {
+    violations.push(`${normalized}: PixiJS must use auditable named imports`);
+  }
+
+  if (
+    /export\s+\*\s*(?:as\s+[A-Za-z_$][\w$]*\s*)?from\s+["']pixi\.js(?:\/[^"']*)?["']/u.test(source)
+  ) {
+    violations.push(`${normalized}: wildcard PixiJS re-exports are forbidden`);
+  }
+
   if (/from\s+["']planck(?:\/[^"']*)?["']|import\s*\(\s*["']planck(?:\/[^"']*)?["']\s*\)/u.test(source)) {
     if (!normalized.startsWith("src/physics/") && !normalized.startsWith("tests/physics/")) {
       violations.push(`${normalized}: Planck imports belong to physics modules`);

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 test.describe("G1-A boot surface", () => {
@@ -51,6 +52,12 @@ test.describe("G1-A boot surface", () => {
     expect(stopped?.running).toBe(false);
     expect(stopped?.pendingFrame).toBe(false);
     expect(stopped?.activeLoopCount).toBe(0);
+
+    await page.locator("[data-action='toggle-loop']").focus();
+    await page.keyboard.press("Space");
+    await expect(page.locator("[data-status]")).toHaveText("実行中");
+    await page.locator("[data-action='toggle-loop']").click();
+    await expect(page.locator("[data-status]")).toHaveText("停止中");
     expect(uncaught).toEqual([]);
   });
 
@@ -62,6 +69,8 @@ test.describe("G1-A boot surface", () => {
     await expect(page.locator("[data-canvas-host] canvas")).toBeVisible();
 
     for (let index = 0; index < 20; index += 1) {
+      await page.keyboard.press("Space");
+      await expect(page.locator("[data-status]")).toHaveText("実行中");
       const initialized = await page.evaluate(() =>
         window.__DOPPAN_G1A__?.reinitializeRenderer(),
       );
@@ -221,5 +230,29 @@ test.describe("G1-A boot surface", () => {
     await page.setViewportSize({ width: 844, height: 390 });
     await page.goto("/");
     await expect(page.locator(".landscape-hint")).toBeVisible();
+  });
+
+  test("keeps the public root guide separate and mobile-safe", async ({ page }) => {
+    const rootGuide = await readFile(
+      new URL("../../pages/root/root-guide.html", import.meta.url),
+      "utf8",
+    );
+
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: 720 });
+      await page.setContent(rootGuide);
+      await expect(page.locator("main")).toContainText("一般公開前");
+      await expect(page.locator("a")).toHaveCount(0);
+      await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+        "content",
+        "noindex, nofollow, noarchive",
+      );
+      const overflow = await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth >
+          document.documentElement.clientWidth,
+      );
+      expect(overflow).toBe(false);
+    }
   });
 });
