@@ -1,125 +1,221 @@
 # DOPPAN 制作状況
 
-- 文書種別: 現在地・承認待ち・次作業
+- 文書種別: 現在地・停止条件・次作業
 - 更新日: 2026-08-09
-- 対象ブランチ: `agent/game-engineering-plan-review`
-- 対象PR: Draft PR #4
-- 現在の段階: ゲームエンジニアレビュー反映完了 / PRレビュー待ち
+- 正本対象: `main`
+- 現在の段階: G0通過 / G0.5・G1-A開始前
 
 ## 1. この文書の使い方
 
 制作を再開する時は、最初に本書を確認する。
 
-本書は詳細仕様を持たず、現在地、停止条件、承認待ち、次の成果物だけを示す。詳細は各正本文書を参照する。
+本書は詳細仕様を持たず、現在地、停止条件、次の成果物、作らないものだけを示す。
+
+作業中のブランチ名とpull request番号は、本書へ固定しない。各pull request本文で管理する。
+
+---
 
 ## 2. 現在地
 
 | 項目 | 状態 | 内容 |
 |---|---|---|
-| 計画体系 | 改訂完了 | ゲームループ、物理イベント、状態遷移、自動試験、PRプレビューをPR #4へ反映 |
+| 計画体系 | 改訂済み | プロデューサー、ゲームエンジニア、敵対的検証を反映 |
 | G0 制作目的 | 通過 | カメレオンJPの代表作候補として制作 |
-| G0.5 市場・名称 | 未着手 | 8〜12作品比較と名称確認が必要 |
-| G1 技術試作 | 開始待ち | PR #4のマージ後に実装可能 |
-| G2 中心体験 | 未着手 | 代表的な仕組み3候補、意味のテーマ、ショットマップを決定 |
-| GA グレー版アルファ | 開始禁止 | G0.5、G1、G2の通過が必要 |
-| 本番素材 | 開始禁止 | GAの面白さ判定通過が必要 |
-| ランキング・外部分析 | 開始禁止 | 正式版1.0公開後に再判断 |
+| G0.5 市場・名称 | 未着手 | 8〜12作品比較と名称確認 |
+| G1-A 技術基盤 | 開始前 | 依存、CI、Playwright、GitHub Pages確認枠 |
+| G1-B 物理試作 | 開始禁止 | G1-A通過後に開始 |
+| G2 中心体験 | 未着手 | 代表的な仕組み、意味のテーマ、ショットマップ |
+| GA グレー版アルファ | 開始禁止 | G0.5、G1-A、G1-B、G2通過が必要 |
+| 本番素材 | 開始禁止 | GA面白さ判定通過が必要 |
+| 正式公開 | 開始禁止 | G7でユーザー本人が承認するまで行わない |
+| ランキング・外部分析 | 開始禁止 | v1.0公開後に再判断 |
 
-## 3. PR #4で解消した技術BLOCKER
+G0.5とG1-Aは並行可能。
 
-- G1の実装範囲と品質ゲートの不一致
-- 物理更新・接触・得点・描画の処理順が未定
-- 接触コールバック中の物理世界変更を防ぐ仕組みが未定
-- 盤面初期定義とプレイ中状態が未分離
-- ショット途中状態と状態遷移表が未定
-- Planck.jsへ渡す物理単位が未定
-- 固定時間の追いつき上限が未定
-- ブラウザ自動試験がない
-- マージ前にiPhoneで開くPRプレビューがない
-- 安全位置、資源上限、WebGL安全停止が未定
+---
 
-## 4. PR #4マージ後に残るBLOCKER
+## 3. 完成前のGitHub Pages方針
 
-1. 市場比較が未実施で、DOPPAN固有の価値が未検証
+- GitHub PagesをiPhone確認に使用
+- 完成前はURLをREADME、SNS、公開サイト、記事へ掲載・案内しない
+- ユーザー本人だけがGitHub Actionsなどから確認URLを開く
+- 本番ルートへ未完成ゲームを置かない
+- 確認ページは信頼済みブランチ一件だけ
+- 検索除外を設定
+- GitHub Pagesは公開URLであり、秘密性やアクセス制限は保証されない
+- 第三者へ確認URLを配布しない
+- `main`への取り込みだけでは正式版を公開しない
+- G7後の手動承認で正式公開
+
+試遊で第三者へURLを送らない。完成前の試遊は、原則としてユーザー所有端末を使った対面または管理下の確認で行う。
+
+---
+
+## 4. 現在のBLOCKER
+
+### G0.5
+
+1. 市場比較が未実施
 2. 正式名称が未決定
-3. 依存候補の互換性とlockファイルが未確認
-4. PRプレビュー方式が実装で成立するか未確認
-5. Planck.jsを継続できるか未確認
-6. 代表的な仕組みが未決定
+3. DOPPAN固有の価値が未検証
+
+### G1-A
+
+1. Node.js、npm、TypeScript、ESLint等の正確な版が未固定
+2. `npm ci`で再現可能な組み合わせが未確認
+3. GitHub Actionsの権限と完全SHA固定が未実装
+4. GitHub Pagesの未告知確認枠が未実装
+5. 本番ルートと確認枠の成果物構成が未確認
+6. 確認ページ終了後処理が未確認
+
+### G1-B
+
+1. Planck.js継続可否が未確認
+2. 60Hzと120Hzの選択が未決定
+3. 発射方式が未決定
+4. 球受け・保持の技術的成立性が未確認
+5. 入力キュー、接触分離、状態二層化が未実装
+
+### G2
+
+1. 代表的な仕組みが未決定
+2. 意味のテーマが未決定
+3. ショットマップが未決定
+
+---
 
 ## 5. 次の成果物
 
-G0.5とG1は並行可能とする。
+順序:
 
-1. Draft PR #4のレビューとマージ
-2. G0.5の市場・名称調査
-3. G1技術試作のDraft PR
-4. 依存版とlockファイル
-5. PR別プレビューURL
-6. 左右フリッパー、発射3段階、安全ショットの技術試作
-7. Vitest・Playwright・iPhone実機の結果
-8. Planck.js継続判断
-9. G2で代表的な仕組み、意味のテーマ、ショットマップを確定
+1. 現在の計画改訂を`main`へ取り込む
+2. G0.5市場・名称調査を開始
+3. G1-A技術基盤のDraft PR
+4. G1-AをiPhone Safariで確認
+5. G1-Aマージ後、確認ページ終了処理を後続確認
+6. G1-B物理試作のDraft PR
+7. Vitest、Playwright、iPhone・iPad結果
+8. Planck.js、物理Hz、発射、球受けの判断
+9. G2で中心体験とショットマップを確定
 
-## 6. G1の固定範囲
+---
+
+## 6. G1-A固定範囲
 
 含める:
 
+- package設定とlockファイル
+- Node.js、npm、TypeScript、ESLint等の版固定
+- TypeScript、Vite、Vitest、Playwright
+- GitHub Actions CI
+- GitHub Pages未告知確認枠
+- 本番ルートの開発中案内
+- PixiJS起動画面
+- 単一GameLoop骨格
+- 環境名、コミットSHA表示
+- 環境別保存キー
+- iPhone Safari確認
+
+含めない:
+
+- Planck.js物理品質の判断
+- 本番盤面
+- 本番得点
+- 本番画像、音楽、効果音
+- 代表的な仕組み
+- ランキング、Supabase、外部分析
+
+---
+
+## 7. G1-B固定範囲
+
+含める:
+
+- Planck.js world
 - 左右フリッパー2本
-- 球、外周壁
+- 球と外周
 - 発射装置、発射レーン、強度3区画
-- 安全ショット用の単純通路1本
+- 安全ショット通路1本
 - Pointer Events、キーボード
-- 固定時間ゲームループ
-- 接触バッファ、物理変更予約
-- 最小状態遷移
-- Vitest、Playwright、GitHub Actions
-- PRプレビューとiPhone確認
+- InputEventQueue
+- 単一GameLoop
+- 60Hz / 120Hz比較
+- 用途別接触イベント
+- PhysicsCommandQueue
+- ショット状態機械
+- baseState、suspensionState、pendingTerminalEvents
+- 安全位置と回復
+- 資源寿命監視
+- Vitest、Playwright、iPhone・iPad確認
 
 含めない:
 
 - 本番盤面
-- 本番画像、音楽、効果音
 - 代表的な仕組みの本実装
 - クライマックス本実装
-- オンラインランキング
-- Supabase
-- 外部テレメトリー
-- 複数盤面、対戦、3D
+- 本番素材
+- ランキング、Supabase、外部分析
 
-## 7. 正本文書の分担
+---
+
+## 8. 今は作らないもの
+
+- 本番盤面
+- 本番画像、音楽、効果音
+- クライマックス本実装
+- オンラインランキング
+- Supabase連携
+- 外部テレメトリー
+- 複数盤面
+- 対戦
+- 3D化
+- 外部へ配布する確認URL
+- `main`マージ時の自動本番公開
+
+---
+
+## 9. 正本文書の分担
 
 | 文書 | 正本となる内容 |
 |---|---|
-| [GAME_PRODUCTION_PLAN.md](./GAME_PRODUCTION_PLAN.md) | 制作目的、対象、作品方針、範囲、制作ゲート |
-| [CORE_EXPERIENCE_PLAN.md](./CORE_EXPERIENCE_PLAN.md) | 代表的な仕組み、習熟、保持の役割、縦切り、表現制作 |
-| [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) | 技術構成と実装工程 |
-| [ENGINEERING_ARCHITECTURE.md](./ENGINEERING_ARCHITECTURE.md) | ゲームループ、物理イベント、単位、状態、ショット、資源上限 |
-| [TEST_AND_PREVIEW_PLAN.md](./TEST_AND_PREVIEW_PLAN.md) | CI、Playwright、PRプレビュー、iPhone確認 |
-| [QUALITY_GATES.md](./QUALITY_GATES.md) | 合否基準と不具合重大度 |
-| [PLAYTEST_PROTOCOL.md](./PLAYTEST_PROTOCOL.md) | 試遊募集、実施、記録、再試験 |
+| [GAME_PRODUCTION_PLAN.md](./GAME_PRODUCTION_PLAN.md) | 制作目的、対象、作品方針、制作ゲート |
+| [CORE_EXPERIENCE_PLAN.md](./CORE_EXPERIENCE_PLAN.md) | 中心体験、習熟、保持、縦切り、表現 |
+| [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) | 実装順序、G1-A/B、技術構成 |
+| [ENGINEERING_ARCHITECTURE.md](./ENGINEERING_ARCHITECTURE.md) | 入力キュー、ゲームループ、接触、物理、状態、資源 |
+| [TEST_AND_PREVIEW_PLAN.md](./TEST_AND_PREVIEW_PLAN.md) | CI、Vitest、Playwright、実機確認 |
+| [DEPLOYMENT_AND_SECURITY_PLAN.md](./DEPLOYMENT_AND_SECURITY_PLAN.md) | GitHub Pages、未告知運用、権限、正式公開 |
+| [QUALITY_GATES.md](./QUALITY_GATES.md) | 合否基準、不具合重大度 |
+| [PLAYTEST_PROTOCOL.md](./PLAYTEST_PROTOCOL.md) | 試遊の実施、記録、URLを渡さない方法 |
 | [MARKET_AND_NAME_REVIEW.md](./MARKET_AND_NAME_REVIEW.md) | 競合比較、独自性、名称確認 |
-| [DECISION_LOG.md](./DECISION_LOG.md) | 決定、検証仕様、変更履歴 |
-| [EXPANSION_IDEAS.md](./EXPANSION_IDEAS.md) | 正式版1.0公開後の候補 |
+| [DECISION_LOG.md](./DECISION_LOG.md) | 決定、検証仕様、未決定、変更履歴 |
+| [EXPANSION_IDEAS.md](./EXPANSION_IDEAS.md) | v1.0公開後の候補 |
 
-同じ内容を複数文書へ重ねて書かない。別文書で触れる場合は要約とリンクだけにする。
+---
 
-## 8. 承認状態
+## 10. 承認状態
 
 | 決定 | 状態 |
 |---|---|
 | 代表作候補として制作 | 決定 |
 | 3球制 | 決定 |
-| 球間で恒久進行を保持 | GA検証仕様 |
-| 発射強度と基本スキルショット | G1・GA検証仕様 |
-| Planck.js | G1の第一候補 |
-| 球の保持 | 中心技能候補。面白さを増やさなければ除外可 |
-| Playwright | G1のブラウザ自動試験に採用 |
-| PRプレビュー | GitHub Pages配下を第一候補。G1で成立確認 |
+| GitHub Pages使用 | 決定 |
+| 完成までURLを外部へ案内しない | 決定 |
+| Pagesは非公開ではない | 認識済み |
+| `main`と正式公開を分離 | 決定 |
+| G1をG1-A / G1-Bへ分割 | 決定 |
+| 球間恒久進行 | GA検証仕様 |
+| 発射強度 | G1-B・GA検証仕様 |
+| Planck.js | G1-B第一候補 |
+| 球受け・保持 | 中心技能候補。除外可能 |
+| Playwright | ブラウザ自動試験に採用 |
+| 外部フォークの自動Pages公開 | 禁止 |
 
-## 9. 更新ルール
+---
 
-- ゲート通過、BLOCKER追加、ユーザー承認、PR作成時に本書を更新する
-- 詳細仕様は本書へ書かず、正本文書を更新する
-- 古いPR番号を工程文書へ固定しない
-- 次作業が変わった場合は、実装より先に本書を更新する
+## 11. 更新ルール
+
+- ゲート通過、BLOCKER、承認、次作業の変更時に更新
+- 作業中PR番号を固定しない
+- 詳細仕様を本書へ重複記載しない
+- 次作業が変わった場合は実装より先に更新
+- 正式公開後も確認ページの扱いが変われば更新
