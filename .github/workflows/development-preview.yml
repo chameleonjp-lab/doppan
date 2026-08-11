@@ -6,12 +6,13 @@ on:
       - agent/g1a-technical-foundation
       - agent/g1b-physics-prototype
       - agent/vertical-slice
+      - agent/ga-clarity-pages-sync
   workflow_dispatch:
     inputs:
       ref:
         description: "Checkout ref for this same-repository preview"
         required: true
-        default: agent/vertical-slice
+        default: agent/ga-clarity-pages-sync
         type: string
       display_name:
         description: "Build label shown on the boot screen"
@@ -38,7 +39,8 @@ jobs:
       (github.event_name == 'push' &&
       (github.ref == 'refs/heads/agent/g1a-technical-foundation' ||
       github.ref == 'refs/heads/agent/g1b-physics-prototype' ||
-      github.ref == 'refs/heads/agent/vertical-slice')))
+      github.ref == 'refs/heads/agent/vertical-slice' ||
+      github.ref == 'refs/heads/agent/ga-clarity-pages-sync')))
     name: verify development preview
     runs-on: ubuntu-24.04
     permissions:
@@ -59,7 +61,7 @@ jobs:
           if test "$GITHUB_EVENT_NAME" = "push"
           then
             case "$GITHUB_REF" in
-              refs/heads/agent/g1a-technical-foundation|refs/heads/agent/g1b-physics-prototype|refs/heads/agent/vertical-slice) ;;
+              refs/heads/agent/g1a-technical-foundation|refs/heads/agent/g1b-physics-prototype|refs/heads/agent/vertical-slice|refs/heads/agent/ga-clarity-pages-sync) ;;
               *) exit 1 ;;
             esac
           fi
@@ -71,7 +73,8 @@ jobs:
           for trusted_ref in \
             refs/remotes/origin/agent/g1a-technical-foundation \
             refs/remotes/origin/agent/g1b-physics-prototype \
-            refs/remotes/origin/agent/vertical-slice
+            refs/remotes/origin/agent/vertical-slice \
+            refs/remotes/origin/agent/ga-clarity-pages-sync
           do
             if trusted_sha=$(git rev-parse --verify "${trusted_ref}^{commit}" 2>/dev/null) && \
               test "$checked_sha" = "$trusted_sha"

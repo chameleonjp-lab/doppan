@@ -2,6 +2,8 @@ export { GrayboxAlpha, type GrayboxAlphaDiagnostics, type GrayboxAlphaSnapshot }
 export {
   GrayboxRuntime,
   GRAYBOX_PATH_LENGTH,
+  formatGrayboxReturnRouteLabel,
+  formatGrayboxTargetLabel,
   type GrayboxClimaxState,
   type GrayboxReturnRouteId,
   type GrayboxRuntimeSnapshot,

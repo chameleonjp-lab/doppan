@@ -74,14 +74,14 @@ const GATE_BY_ROUTE: Readonly<Record<GrayboxReturnRouteId, string>> = {
 };
 
 const TARGET_LABEL: Readonly<Record<GrayboxTargetId, string>> = {
-  L0: "L0 左・安全",
-  R0: "R0 右・安全",
-  L1: "L1 左・中核",
-  R1: "R1 右・中核",
-  L2: "L2 左・危険",
-  R2: "R2 右・危険",
-  C0: "C0 中央接続",
-  C1: "C1 中枢入口",
+  L0: "左の安全ショット",
+  R0: "右の安全ショット",
+  L1: "左の中核ショット",
+  R1: "右の中核ショット",
+  L2: "左の危険ショット",
+  R2: "右の危険ショット",
+  C0: "中央の接続ショット",
+  C1: "中央のクライマックス入口",
 };
 
 const ROUTE_LABEL: Readonly<Record<GrayboxReturnRouteId, string>> = {
@@ -94,6 +94,16 @@ const ROUTE_LABEL: Readonly<Record<GrayboxReturnRouteId, string>> = {
   "central-return": "中央接続の戻り",
   "climax-return": "中枢からの安全戻り",
 };
+
+/** Converts an internal target id into the wording shown to players. */
+export function formatGrayboxTargetLabel(targetId: GrayboxTargetId): string {
+  return TARGET_LABEL[targetId];
+}
+
+/** Converts an internal return-route id into the wording shown to players. */
+export function formatGrayboxReturnRouteLabel(routeId: GrayboxReturnRouteId): string {
+  return ROUTE_LABEL[routeId];
+}
 
 function isGrayboxTargetId(value: string): value is GrayboxTargetId {
   return TARGET_IDS.includes(value as GrayboxTargetId);
@@ -171,18 +181,18 @@ export class GrayboxRuntime {
     if (targetId === null) {
       return this.climaxStateValue === "active" ? "クライマックス中" : "目標なし";
     }
-    return TARGET_LABEL[targetId];
+    return formatGrayboxTargetLabel(targetId);
   }
 
   public activeTargetLabel(): string {
     if (this.activeTargetIdsValue.length === 0) {
       return this.climaxStateValue === "active" ? "クライマックス中" : "目標なし";
     }
-    return this.activeTargetIdsValue.map((targetId) => TARGET_LABEL[targetId]).join(" / ");
+    return this.activeTargetIdsValue.map(formatGrayboxTargetLabel).join(" / ");
   }
 
   public returnRouteLabel(): string {
-    return ROUTE_LABEL[this.returnRouteIdValue];
+    return formatGrayboxReturnRouteLabel(this.returnRouteIdValue);
   }
 
   private completeTarget(targetId: GrayboxTargetId, physicsStepId: number, world: PinballWorld): void {
@@ -209,8 +219,8 @@ export class GrayboxRuntime {
     const nextLabel = this.activeTargetLabel();
     this.lastEventLabelValue =
       this.climaxStateValue === "active"
-        ? `${TARGET_LABEL[targetId]}成功。クライマックス開始`
-        : `${TARGET_LABEL[targetId]}成功。戻りを${ROUTE_LABEL[nextRoute]}へ変更。次は${nextLabel}`;
+        ? `${formatGrayboxTargetLabel(targetId)}成功。クライマックス開始`
+        : `${formatGrayboxTargetLabel(targetId)}成功。戻りを${formatGrayboxReturnRouteLabel(nextRoute)}へ変更。次は${nextLabel}`;
     this.lastEventPhysicsStepIdValue = physicsStepId;
   }
 

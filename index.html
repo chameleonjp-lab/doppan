@@ -50,7 +50,7 @@
             </select>
           </label>
           <button type="button" class="toolbar-button" data-action="reset-prototype" disabled>新しいゲーム</button>
-          <button type="button" class="toolbar-button" data-action="copy-report" disabled>試遊レポートを表示</button>
+          <button type="button" class="toolbar-button" data-action="copy-report" disabled>試遊レポートを表示・コピー</button>
           <span class="loop-status" data-status role="status" aria-live="polite">初期化中</span>
         </div>
 
@@ -62,9 +62,10 @@
             </div>
             <p class="graybox-event" data-graybox="event" role="status" aria-live="polite">初期化中</p>
           </div>
+          <p class="graybox-guide">黄色の目標へ当てると、次に球が戻る道が変わります。</p>
           <dl class="graybox-grid">
-            <div><dt>次の目標</dt><dd data-graybox="target">L0 / R0</dd></div>
-            <div><dt>球の戻り道</dt><dd data-graybox="return">neutral-return</dd></div>
+            <div><dt>次の目標</dt><dd data-graybox="target">左の安全ショット / 右の安全ショット</dd></div>
+            <div><dt>球の戻り道</dt><dd data-graybox="return">中央の基本戻り</dd></div>
             <div><dt>進行</dt><dd data-graybox="progress">0 / 5</dd></div>
             <div><dt>今回の得点</dt><dd data-graybox="score">0</dd></div>
             <div><dt>連続成功</dt><dd data-graybox="combo">0</dd></div>

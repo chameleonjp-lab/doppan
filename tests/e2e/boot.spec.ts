@@ -69,7 +69,9 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     expect(boot.prototype.inputOwners).toBe(0);
     expect(boot.prototype.physics.safeStopped).toBe(false);
     expect(boot.pixi?.renderCount).toBeGreaterThanOrEqual(1);
-    await expect(page.locator("[data-graybox='target']")).toHaveText("L0 / R0");
+    await expect(page.locator("[data-graybox='target']")).toHaveText("左の安全ショット / 右の安全ショット");
+    await expect(page.locator("[data-graybox='return']")).toHaveText("中央の基本戻り");
+    await expect(page.locator(".graybox-guide")).toHaveText("黄色の目標へ当てると、次に球が戻る道が変わります。");
     await expect(page.locator("[data-graybox='progress']")).toHaveText("0 / 5");
     expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
     await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");

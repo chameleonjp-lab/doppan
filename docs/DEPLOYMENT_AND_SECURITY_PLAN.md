@@ -3,8 +3,8 @@
 - 文書種別: GitHub Pages・環境分離・GitHub Actions権限・未告知運用・規約適合
 - 作成日: 2026-08-09
 - 最終更新日: 2026-08-12
-- 版: 1.3
-- 状態: G3 / GA縦切りマージ済み・Pagesのビルド成果物配置を確認中
+- 版: 1.4
+- 状態: G3 / GA技術縦切りマージ済み・理解性パス統合中・Pagesのビルド成果物配置を確認中
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [推奨実装計画書](./IMPLEMENTATION_PLAN.md)
@@ -257,7 +257,7 @@ PR #11でG3 / GAの技術縦切りはマージ済みだが、2026-08-12の公開
 ├─ index.html                 # pages/root/root-guide.htmlの案内
 ├─ robots.txt
 └─ _preview/
-   └─ current/                # agent/vertical-sliceの検査済みdist
+   └─ current/                # agent/vertical-sliceまたは統合候補の検査済みdist
 ```
 
 この確認単位では、次をユーザー本人がGitHub側で設定・実行する。
@@ -265,7 +265,7 @@ PR #11でG3 / GAの技術縦切りはマージ済みだが、2026-08-12の公開
 1. PagesのSourceを`GitHub Actions`へ設定する
 2. `github-pages` Environmentの必須reviewerとdeployment branch ruleを確認する
 3. Repository variable `DEVELOPMENT_PREVIEW_ENABLED=true`を確認する
-4. `main`から`Development preview`を手動実行し、refに`agent/vertical-slice`を指定する
+4. `main`から`Development preview`を手動実行し、refに`agent/ga-clarity-pages-sync`を指定する
 5. ルート案内、`/_preview/current/`のゲーム起動、ビルドSHA、`robots.txt`を確認する
 
 ルートでゲームが直接起動する状態や、未変換の`src/main.ts`を配信する状態は、実装コードが動いて見えても採用しない。
@@ -335,7 +335,7 @@ G1-Aの初回構築では、専用内部ブランチ`agent/g1a-technical-foundat
 
 ブランチ上のworkflow自身が変更可能であるため、このEnvironment保護と明示スイッチを初回bootstrapの前提とする。設定を確認できない場合は、検査成果物までで停止し、Pages配置を完了扱いにしない。
 
-`main`へ専用ワークフローを取り込んだ後は、`workflow_dispatch`で同一リポジトリ内の信頼済みrefと表示名を明示して更新できる。G1-A / G1-Bと、マージ済みG3 / GAを含む`agent/vertical-slice`をallowlistし、checkoutしたSHAが対象ブランチの現在tipと一致する場合だけ実行する。`refs/pull/*`とallowlist外のSHAは拒否する。
+`main`へ専用ワークフローを取り込んだ後は、`workflow_dispatch`で同一リポジトリ内の信頼済みrefと表示名を明示して更新できる。G1-A / G1-B、マージ済みG3 / GAの`agent/vertical-slice`、理解性パス統合候補の`agent/ga-clarity-pages-sync`をallowlistし、checkoutしたSHAが対象ブランチの現在tipと一致する場合だけ実行する。`refs/pull/*`とallowlist外のSHAは拒否する。
 
 確認ページは一件だけなので、後から実行された承認済みビルドで置き換える。
 
