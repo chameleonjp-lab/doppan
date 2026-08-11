@@ -38,6 +38,8 @@ export class G1BPrototype {
 
   private chargeSteps = 0;
 
+  private gameplayStartedValue = false;
+
   private fatalErrorValue: Error | null = null;
 
   private destroyed = false;
@@ -80,6 +82,7 @@ export class G1BPrototype {
     }
 
     try {
+      let gameplayStartedThisAdvance = false;
       const steps = this.clockValue.advance(deltaMs, (stepSeconds, physicsStepId) => {
         const appliedEvents = this.input.applyPhysicsStep(physicsStepId);
         const input = this.input.state.snapshot();
@@ -100,6 +103,11 @@ export class G1BPrototype {
         }
         this.plungerWasPressed = input.plunger;
 
+        if (launch !== undefined && !this.gameplayStartedValue) {
+          this.gameplayStartedValue = true;
+          gameplayStartedThisAdvance = true;
+        }
+
         const stepResult = this.worldValue.step(stepSeconds, {
           left: input.leftFlipper,
           right: input.rightFlipper,
@@ -111,7 +119,14 @@ export class G1BPrototype {
         }
       });
 
-      if (this.clockValue.diagnostics().autoPauseReason !== null) {
+      // Renderer initialization and the first page frames can legitimately
+      // exceed the catch-up budget before a run has started. Do not carry
+      // that startup jitter into the next launch, but keep the strict
+      // repeated-drop stop once gameplay is active.
+      if (!this.gameplayStartedValue || gameplayStartedThisAdvance) {
+        this.clockValue.resetRunIntegrity();
+      }
+      if (this.gameplayStartedValue && this.clockValue.diagnostics().autoPauseReason !== null) {
         this.input.releaseAll("safe-stop");
         this.gameState.suspend("SystemInterrupted");
         this.clockValue.setSuspended(true);
@@ -199,6 +214,7 @@ export class G1BPrototype {
     this.worldValue = new PinballWorld({ physicsStepHz });
     this.clockValue = new FixedStepClock({ physicsStepHz });
     this.clearLaunchCharge();
+    this.gameplayStartedValue = false;
     this.fatalErrorValue = null;
   }
 

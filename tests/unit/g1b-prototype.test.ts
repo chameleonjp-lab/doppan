@@ -28,6 +28,23 @@ describe("G1BPrototype integration", () => {
     prototype.destroy();
   });
 
+  it("does not turn startup frame drops into an interruption before launch", () => {
+    const prototype = new G1BPrototype({ physicsStepHz: 60 });
+    prototype.advance(250);
+    prototype.advance(250);
+    prototype.advance(250);
+
+    expect(prototype.gameState.suspensionState).toBe("None");
+    expect(prototype.diagnostics()).toMatchObject({
+      runIntegrity: "valid",
+      fixedStep: {
+        droppedSimulationCount: 0,
+        autoPauseReason: null,
+      },
+    });
+    prototype.destroy();
+  });
+
   it("resets worlds without growing Planck resources", () => {
     const prototype = new G1BPrototype({ physicsStepHz: 60 });
     const baseline = prototype.diagnostics().physics;

@@ -92,6 +92,15 @@ export class FixedStepClock {
     }
   }
 
+  /** Starts a fresh integrity window without changing the simulation position. */
+  public resetRunIntegrity(): void {
+    this.droppedSimulationMsValue = 0;
+    this.droppedSimulationCountValue = 0;
+    this.visibleElapsedMsValue = 0;
+    this.dropTimesMs = [];
+    this.integrityInvalid = false;
+  }
+
   public advance(deltaMs: number, update: FixedStepUpdate): number {
     this.stepsThisFrameValue = 0;
     if (this.suspendedValue) {

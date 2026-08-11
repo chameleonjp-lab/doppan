@@ -59,6 +59,23 @@ describe.each([60, 120] satisfies PhysicsStepHz[])("FixedStepClock at %iHz", (ph
     });
   });
 
+  it("can start a new integrity window without rewinding physics", () => {
+    const clock = new FixedStepClock({ physicsStepHz });
+    clock.advance(80, () => undefined);
+    clock.advance(80, () => undefined);
+    const physicsStepId = clock.diagnostics().physicsStepId;
+
+    clock.resetRunIntegrity();
+
+    expect(clock.diagnostics()).toMatchObject({
+      physicsStepId,
+      droppedSimulationMs: 0,
+      droppedSimulationCount: 0,
+      runIntegrity: "valid",
+      autoPauseReason: null,
+    });
+  });
+
   it("does not combine isolated drops from separate fifteen-minute windows", () => {
     const clock = new FixedStepClock({ physicsStepHz });
     clock.advance(80, () => undefined);
