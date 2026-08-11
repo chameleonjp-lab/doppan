@@ -73,4 +73,29 @@ describe("loop controls", () => {
     expect(toggleCount).toBe(0);
     controller.abort();
   });
+
+  it("supports assigning Escape to pause without consuming Space", () => {
+    const button = new EventTarget();
+    const keyboard = new EventTarget();
+    let toggleCount = 0;
+    const controller = bindLoopControls({
+      button,
+      keyboardTarget: keyboard,
+      keyboardCode: "Escape",
+      onToggle: () => {
+        toggleCount += 1;
+      },
+    });
+
+    keyboard.dispatchEvent(Object.assign(new Event("keydown"), { code: "Space", repeat: false }));
+    const escape = Object.assign(new Event("keydown", { cancelable: true }), {
+      code: "Escape",
+      repeat: false,
+    });
+    keyboard.dispatchEvent(escape);
+
+    expect(toggleCount).toBe(1);
+    expect(escape.defaultPrevented).toBe(true);
+    controller.abort();
+  });
 });

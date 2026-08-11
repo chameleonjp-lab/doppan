@@ -17,7 +17,7 @@ export function defaultBuildTarget(environment: string): string {
 
 function buildInfoPlugin(): Plugin {
   return {
-    name: "doppan-g1a-build-info",
+    name: "doppan-build-info",
     transformIndexHtml(html) {
       return html.replace(
         "</head>",

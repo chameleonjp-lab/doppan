@@ -3,6 +3,7 @@ export interface LoopControlBindings {
   keyboardTarget: EventTarget;
   onToggle: () => void;
   controller?: AbortController;
+  keyboardCode?: string;
 }
 
 interface InteractiveTarget extends EventTarget {
@@ -35,12 +36,13 @@ function isEditableOrInteractiveTarget(target: EventTarget | null): boolean {
  */
 export function bindLoopControls(bindings: LoopControlBindings): AbortController {
   const controller = bindings.controller ?? new AbortController();
+  const keyboardCode = bindings.keyboardCode ?? "Space";
 
   bindings.button.addEventListener("click", bindings.onToggle, { signal: controller.signal });
   bindings.keyboardTarget.addEventListener("keydown", (event) => {
     const keyboardEvent = event as KeyboardEvent;
     if (
-      keyboardEvent.code !== "Space" ||
+      keyboardEvent.code !== keyboardCode ||
       keyboardEvent.repeat ||
       isEditableOrInteractiveTarget(keyboardEvent.target)
     ) {

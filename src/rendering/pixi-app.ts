@@ -1,11 +1,10 @@
 import {
   Container,
-  Graphics,
-  Text,
-  TextStyle,
   WebGLRenderer,
   type WebGLOptions,
 } from "pixi.js";
+import type { PinballSnapshot } from "../physics";
+import { createG1BScene } from "./g1b-scene";
 import { initializeWithCleanup } from "./renderer-lifecycle";
 
 export interface PixiRuntime {
@@ -15,6 +14,7 @@ export interface PixiRuntime {
   readonly resizeObserver: ResizeObserver | null;
   readonly renderCount: number;
   resize(): void;
+  updatePrototype(snapshot: PinballSnapshot): void;
   step(deltaMs: number): void;
   destroy(): void;
 }
@@ -36,36 +36,6 @@ function viewportSize(host: HTMLElement): { width: number; height: number } {
       Math.floor(host.clientHeight || host.getBoundingClientRect().height || 1),
     ),
   };
-}
-
-function createScene(): Container {
-  const scene = new Container();
-  const panel = new Graphics()
-    .roundRect(16, 16, 280, 112, 18)
-    .fill({ color: 0x172033, alpha: 0.94 })
-    .stroke({ color: 0x79e2c2, width: 2, alpha: 0.8 });
-  const dot = new Graphics().circle(48, 72, 12).fill(0x79e2c2);
-  const title = new Text({
-    text: "DOPPAN G1-A",
-    style: new TextStyle({
-      fontFamily: "Inter, system-ui, sans-serif",
-      fontSize: 22,
-      fontWeight: "700",
-      fill: 0xf5f7fb,
-    }),
-  });
-  title.position.set(76, 42);
-  const hint = new Text({
-    text: "Pixi renderer ready",
-    style: new TextStyle({
-      fontFamily: "Inter, system-ui, sans-serif",
-      fontSize: 14,
-      fill: 0xb9c4d9,
-    }),
-  });
-  hint.position.set(76, 78);
-  scene.addChild(panel, dot, title, hint);
-  return scene;
 }
 
 export async function createPixiRuntime(
@@ -145,7 +115,8 @@ export async function createPixiRuntime(
     canvas.dataset.testid = "pixi-canvas";
     options.host.replaceChildren(canvas);
 
-    const scene = createScene();
+    const prototypeScene = createG1BScene();
+    const scene = prototypeScene.container;
     stage.addChild(scene);
 
     const reportFatalError = (error: unknown): void => {
@@ -167,6 +138,7 @@ export async function createPixiRuntime(
       lastWidth = size.width;
       lastHeight = size.height;
       renderer.resize(size.width, size.height);
+      prototypeScene.resize(size.width, size.height);
       renderer.render(stage);
       renderCount += 1;
     };
@@ -211,11 +183,11 @@ export async function createPixiRuntime(
         return renderCount;
       },
       resize,
+      updatePrototype: (snapshot: PinballSnapshot) => {
+        prototypeScene.update(snapshot);
+      },
       step: (deltaMs: number) => {
-        // A tiny deterministic motion proves the explicit GameLoop is advancing.
-        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-          dotPulse(scene, deltaMs);
-        }
+        void deltaMs;
         renderer.render(stage);
         renderCount += 1;
       },
@@ -228,12 +200,5 @@ export async function createPixiRuntime(
       // Preserve the initialization failure while cleanup remains best-effort.
     }
     throw error;
-  }
-}
-
-function dotPulse(scene: Container, deltaMs: number): void {
-  const dot = scene.children[1];
-  if (dot instanceof Graphics) {
-    dot.rotation += Math.min(deltaMs, 50) / 5000;
   }
 }

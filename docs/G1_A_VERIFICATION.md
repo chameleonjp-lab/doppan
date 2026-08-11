@@ -35,11 +35,11 @@ G1-Aは、ゲーム内容や物理品質ではなく、起動・描画・ルー�
 | 未告知確認ビルド | `Development preview` workflow | 成功。信頼済みref検査、品質、両ブラウザ、成果物作成を確認。安全スイッチ未有効のためPages配置だけを意図どおりskip |
 | JavaScript+CSS gzip容量 | `npm run size`（600 KiB以下） | 成功、136,019 bytes / 614,400 bytes |
 
-## 手動確認の残り
+## 節目へ引き継ぐ確認
 
 - iPhone実機: 未確認
 - GitHub Pages実デプロイ: 未確認
 - `github-pages` Environmentの必須reviewer・bootstrap push用`agent/g1a-technical-foundation`＋手動更新・cleanup用`main`制限、および`DEVELOPMENT_PREVIEW_ENABLED=true`: 未確認
 - `preview-cleanup.yml` の実行: 未確認
 
-ローカルのPlaywright管理ブラウザ取得は、この作業環境から配布ファイルを正常に取得できず完了しませんでした。Chromium / WebKitの正式な22件はGitHub Actionsで確認しました。残る項目は、リポジトリ設定、実際のPages配置、実機、マージ後処理が必要なため、このPRだけでは完了扱いにしません。
+ローカルのPlaywright管理ブラウザ取得は、この作業環境から配布ファイルを正常に取得できず完了しませんでした。Chromium / WebKitの正式な22件はGitHub Actionsで確認しました。Pages実配置とマージ後処理は配置工程へ、実機項目はGA開始時へ引き継ぎ、G1-B開始の停止条件にはしません。
