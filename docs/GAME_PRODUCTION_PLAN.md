@@ -5,7 +5,7 @@
 - 最終更新日: 2026-08-11
 - 版: 3.3
 - 対象リポジトリ: `chameleonjp-lab/doppan`
-- 状態: G0通過 / G0.5調査完了・名称仮採用 / G1-A通過 / G1-B通過 / G2設計案作成中
+- 状態: G0通過 / G0.5調査完了・名称仮採用 / G1-A通過 / G1-B通過 / G2仮設計完了・graybox-alpha実装中
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [中心体験・表現計画](./CORE_EXPERIENCE_PLAN.md)

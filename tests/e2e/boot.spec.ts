@@ -47,7 +47,7 @@ function assertSingleRuntime(
   expect(observation.pixi?.tickerStarted).toBe(false);
 }
 
-test.describe("G1-B boot surface", () => {
+test.describe("G2 graybox boot surface", () => {
   test.beforeEach(({ page }) => {
     const errors: string[] = [];
     pageErrors.set(page, errors);
@@ -69,6 +69,9 @@ test.describe("G1-B boot surface", () => {
     expect(boot.prototype.inputOwners).toBe(0);
     expect(boot.prototype.physics.safeStopped).toBe(false);
     expect(boot.pixi?.renderCount).toBeGreaterThanOrEqual(1);
+    await expect(page.locator("[data-graybox='target']")).toHaveText("L0 / R0");
+    await expect(page.locator("[data-graybox='progress']")).toHaveText("0 / 5");
+    expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
     await expect(page.locator("[data-status]")).toHaveText("実行中");
     await expect(page.locator("[data-build-environment]")).toHaveText(
       /development-preview|production|test/,

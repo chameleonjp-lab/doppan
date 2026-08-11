@@ -2,9 +2,13 @@ import "./styles.css";
 import { BUILD_INFO, formatBuildInfoValue } from "./build-info";
 import { registerGameLoopHmrDispose, type GameLoop } from "./runtime";
 import { createPixiRuntime, type PixiRuntime } from "./rendering/pixi-app";
-import { createSaveStorage } from "./storage/save-storage";
 import { bindPrototypeInput } from "./ui/prototype-input-bindings";
-import { G1BPrototype, type G1BPrototypeDiagnostics } from "./prototype";
+import {
+  GRAYBOX_PATH_LENGTH,
+  GrayboxAlpha,
+  type GrayboxAlphaDiagnostics,
+  type GrayboxAlphaSnapshot,
+} from "./graybox";
 import type { PhysicsStepHz } from "./loop/fixed-step-clock";
 
 function requiredElement<T extends Element>(selector: string): T {
@@ -24,6 +28,14 @@ const webglError = requiredElement<HTMLElement>("[data-webgl-error]");
 const prototypeError = requiredElement<HTMLElement>("[data-prototype-error]");
 const canvasHost = requiredElement<HTMLElement>("[data-canvas-host]");
 const chargeProgress = requiredElement<HTMLProgressElement>("[data-launch-charge]");
+const grayboxElements = {
+  target: requiredElement<HTMLElement>("[data-graybox='target']"),
+  returnRoute: requiredElement<HTMLElement>("[data-graybox='return']"),
+  progress: requiredElement<HTMLElement>("[data-graybox='progress']"),
+  score: requiredElement<HTMLElement>("[data-graybox='score']"),
+  combo: requiredElement<HTMLElement>("[data-graybox='combo']"),
+  event: requiredElement<HTMLElement>("[data-graybox='event']"),
+};
 const inputButtons = [...root.querySelectorAll<HTMLButtonElement>("button[data-input-action]")];
 const diagnosticsElements = {
   hz: requiredElement<HTMLElement>("[data-diagnostic='hz']"),
@@ -39,7 +51,6 @@ const diagnosticsElements = {
 };
 
 let runtime: PixiRuntime | null = null;
-const saves = createSaveStorage<Record<string, unknown>>(BUILD_INFO.environment);
 const lifecycleController = new AbortController();
 let disposed = false;
 let runtimeGeneration = 0;
@@ -50,7 +61,7 @@ const WEBGL_ERROR_GUIDE =
 const PROTOTYPE_ERROR_GUIDE =
   "入力または物理の安全条件を保てなかったため停止しました。盤面をリセットするか、再読み込みして診断情報を確認してください。";
 
-const prototype = new G1BPrototype({
+const prototype = new GrayboxAlpha({
   physicsStepHz: parsePhysicsHz(hzSelect.value),
   onFatalError: showPrototypeError,
 });
@@ -95,7 +106,9 @@ function disposeApplication(): void {
 const gameLoop: GameLoop = registerGameLoopHmrDispose(
   (deltaMs, timestampMs) => {
     prototype.advance(deltaMs);
-    runtime?.updatePrototype(prototype.snapshot());
+    const snapshot = prototype.snapshot();
+    runtime?.updatePrototype(snapshot);
+    updateGraybox(snapshot);
     runtime?.step(deltaMs);
     if (runtime !== null) {
       prototype.markRendered(timestampMs);
@@ -171,7 +184,9 @@ function togglePause(): void {
   }
   const active = prototype.gameState.suspensionState === "None";
   setStatus(active ? "実行中" : "一時停止中", active);
-  runtime.updatePrototype(prototype.snapshot());
+  const snapshot = prototype.snapshot();
+  runtime.updatePrototype(snapshot);
+  updateGraybox(snapshot);
   runtime.step(0);
   updateDiagnostics(prototype.diagnostics());
 }
@@ -184,7 +199,9 @@ function resetPrototype(): void {
   prototypeError.hidden = true;
   pauseButton.disabled = false;
   setInputDisabled(false);
-  runtime.updatePrototype(prototype.snapshot());
+  const snapshot = prototype.snapshot();
+  runtime.updatePrototype(snapshot);
+  updateGraybox(snapshot);
   runtime.step(0);
   setStatus("実行中", true);
   if (!gameLoop.isRunning) {
@@ -214,10 +231,6 @@ bindPrototypeInput({
 });
 
 window.addEventListener("beforeunload", () => {
-  saves.save({
-    lastStatus: status.textContent ?? "unknown",
-    physicsStepHz: prototype.physicsStepHz,
-  });
   disposeApplication();
 }, { signal: lifecycleController.signal });
 
@@ -264,7 +277,9 @@ async function initializePixiRuntime(): Promise<boolean> {
       return false;
     }
     runtime = created;
-    runtime.updatePrototype(prototype.snapshot());
+    const snapshot = prototype.snapshot();
+    runtime.updatePrototype(snapshot);
+    updateGraybox(snapshot);
     runtime.step(0);
     pauseButton.disabled = false;
     resetButton.disabled = false;
@@ -283,7 +298,7 @@ async function initializePixiRuntime(): Promise<boolean> {
   }
 }
 
-function updateDiagnostics(diagnostics: G1BPrototypeDiagnostics): void {
+function updateDiagnostics(diagnostics: GrayboxAlphaDiagnostics): void {
   diagnosticsElements.hz.textContent = `${diagnostics.fixedStep.physicsStepHz} Hz`;
   diagnosticsElements.step.textContent = String(diagnostics.fixedStep.physicsStepId);
   diagnosticsElements.queue.textContent = `${diagnostics.inputQueueSize} / 256`;
@@ -305,6 +320,29 @@ function updateDiagnostics(diagnostics: G1BPrototypeDiagnostics): void {
   );
   chargeProgress.value = diagnostics.launchCharge;
   chargeProgress.setAttribute("aria-valuetext", `${Math.round(diagnostics.launchCharge * 100)}%`);
+  updateGrayboxFromDiagnostics(diagnostics);
+}
+
+function updateGraybox(snapshot: GrayboxAlphaSnapshot): void {
+  grayboxElements.target.textContent =
+    snapshot.graybox.activeTargetIds.length > 0
+      ? snapshot.graybox.activeTargetIds.join(" / ")
+      : snapshot.graybox.climaxState === "active"
+        ? "クライマックス中"
+        : "目標なし";
+  grayboxElements.returnRoute.textContent = snapshot.graybox.returnRouteId;
+  grayboxElements.progress.textContent =
+    `${snapshot.graybox.completedShotIds.length} / ${GRAYBOX_PATH_LENGTH}`;
+  grayboxElements.score.textContent = String(snapshot.graybox.score);
+  grayboxElements.combo.textContent = String(snapshot.graybox.combo);
+  grayboxElements.event.textContent = snapshot.graybox.lastEventLabel ?? "—";
+}
+
+function updateGrayboxFromDiagnostics(diagnostics: GrayboxAlphaDiagnostics): void {
+  updateGraybox({
+    ...prototype.snapshot(),
+    graybox: diagnostics.graybox,
+  });
 }
 
 function formatLatency(medianMs: number | null, p95Ms: number | null): string {
@@ -323,10 +361,14 @@ declare global {
     __DOPPAN_G1B__?: {
       getLoopDiagnostics: () => ReturnType<GameLoop["diagnostics"]>;
       getPixiDiagnostics: () => PixiDiagnostics | null;
-      getPrototypeDiagnostics: () => G1BPrototypeDiagnostics;
-      getSnapshot: () => ReturnType<G1BPrototype["snapshot"]>;
+      getPrototypeDiagnostics: () => GrayboxAlphaDiagnostics;
+      getSnapshot: () => GrayboxAlphaSnapshot;
       reset: (physicsStepHz?: PhysicsStepHz) => void;
       reinitializeRenderer: () => Promise<boolean>;
+    };
+    __DOPPAN_GA__?: {
+      getPrototypeDiagnostics: () => GrayboxAlphaDiagnostics;
+      getSnapshot: () => GrayboxAlphaSnapshot;
     };
   }
 }
@@ -366,7 +408,9 @@ window.__DOPPAN_G1B__ = {
     hzSelect.value = String(physicsStepHz);
     prototype.reset(physicsStepHz);
     setInputDisabled(runtime === null);
-    runtime?.updatePrototype(prototype.snapshot());
+    const snapshot = prototype.snapshot();
+    runtime?.updatePrototype(snapshot);
+    updateGraybox(snapshot);
     runtime?.step(0);
     if (runtime !== null) {
       setStatus("実行中", true);
@@ -377,6 +421,11 @@ window.__DOPPAN_G1B__ = {
     updateDiagnostics(prototype.diagnostics());
   },
   reinitializeRenderer: initializePixiRuntime,
+};
+
+window.__DOPPAN_GA__ = {
+  getPrototypeDiagnostics: () => prototype.diagnostics(),
+  getSnapshot: () => prototype.snapshot(),
 };
 
 void initializePixiRuntime();

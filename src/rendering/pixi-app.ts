@@ -3,8 +3,8 @@ import {
   WebGLRenderer,
   type WebGLOptions,
 } from "pixi.js";
-import type { PinballSnapshot } from "../physics";
-import { createG1BScene } from "./g1b-scene";
+import type { GrayboxAlphaSnapshot } from "../graybox";
+import { createGrayboxScene } from "./graybox-scene";
 import { initializeWithCleanup } from "./renderer-lifecycle";
 
 export interface PixiRuntime {
@@ -14,7 +14,7 @@ export interface PixiRuntime {
   readonly resizeObserver: ResizeObserver | null;
   readonly renderCount: number;
   resize(): void;
-  updatePrototype(snapshot: PinballSnapshot): void;
+  updatePrototype(snapshot: GrayboxAlphaSnapshot): void;
   step(deltaMs: number): void;
   destroy(): void;
 }
@@ -115,7 +115,7 @@ export async function createPixiRuntime(
     canvas.dataset.testid = "pixi-canvas";
     options.host.replaceChildren(canvas);
 
-    const prototypeScene = createG1BScene();
+    const prototypeScene = createGrayboxScene();
     const scene = prototypeScene.container;
     stage.addChild(scene);
 
@@ -183,7 +183,7 @@ export async function createPixiRuntime(
         return renderCount;
       },
       resize,
-      updatePrototype: (snapshot: PinballSnapshot) => {
+      updatePrototype: (snapshot: GrayboxAlphaSnapshot) => {
         prototypeScene.update(snapshot);
       },
       step: (deltaMs: number) => {
