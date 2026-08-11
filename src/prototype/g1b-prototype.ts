@@ -21,7 +21,6 @@ export interface G1BPrototypeOptions {
 }
 
 const FULL_CHARGE_SECONDS = 1.2;
-const MIN_DROPPED_SIMULATION_MS_FOR_AUTO_PAUSE = 66;
 
 /** Connects input, fixed time, Planck, and plain presentation snapshots. */
 export class G1BPrototype {
@@ -127,12 +126,7 @@ export class G1BPrototype {
       if (!this.gameplayStartedValue || gameplayStartedThisAdvance) {
         this.clockValue.resetRunIntegrity();
       }
-      const clockDiagnostics = this.clockValue.diagnostics();
-      if (
-        this.gameplayStartedValue &&
-        clockDiagnostics.autoPauseReason !== null &&
-        clockDiagnostics.droppedSimulationMs >= MIN_DROPPED_SIMULATION_MS_FOR_AUTO_PAUSE
-      ) {
+      if (this.gameplayStartedValue && this.clockValue.diagnostics().autoPauseReason !== null) {
         this.input.releaseAll("safe-stop");
         this.gameState.suspend("SystemInterrupted");
         this.clockValue.setSuspended(true);

@@ -76,22 +76,27 @@ test.describe("G1-B boot surface", () => {
   });
 
   test("routes a fully charged Space launch into the main board", async ({ page }) => {
+    // This scenario verifies input -> fixed-step -> Planck routing, not the
+    // performance of a traced CI worker. Playwright's clock keeps RAF,
+    // performance, timers, and event timestamps on the same deterministic
+    // timeline while the production dropped-frame policy remains unchanged.
+    await page.clock.install({ time: new Date("2026-08-11T00:00:00.000Z") });
     await page.goto("/");
     await waitForG1B(page);
+    await page.clock.pauseAt(await page.evaluate(() => Date.now()));
 
     await page.keyboard.down("Space");
-    await expect
-      .poll(async () => (await readG1B(page)).prototype.launchCharge)
-      .toBeGreaterThanOrEqual(0.9);
+    await page.clock.runFor(1_200);
+    expect((await readG1B(page)).prototype.launchCharge).toBeGreaterThanOrEqual(0.9);
     await page.keyboard.up("Space");
+    await page.clock.runFor(17);
 
-    await expect
-      .poll(async () => (await readG1B(page)).snapshot.baseState)
-      .toBe("Playing");
-    await expect
-      .poll(async () => (await readG1B(page)).snapshot.ball.position.x)
-      .toBeLessThan(6.64);
+    expect((await readG1B(page)).snapshot.baseState).toBe("Playing");
+    await page.clock.runFor(1_100);
     const routed = await readG1B(page);
+    expect(routed.snapshot.ball.position.x).toBeLessThan(6.64);
+    expect(routed.snapshot.suspensionState).toBe("None");
+    expect(routed.prototype.runIntegrity).toBe("valid");
     expect(routed.prototype.physics.safeStopped).toBe(false);
     expect(routed.prototype.inputLatency.inputToPhysics.sampleCount).toBeGreaterThan(0);
     expect(routed.prototype.inputLatency.inputToDraw.sampleCount).toBeGreaterThan(0);

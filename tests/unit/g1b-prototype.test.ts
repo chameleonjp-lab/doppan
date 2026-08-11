@@ -45,33 +45,6 @@ describe("G1BPrototype integration", () => {
     prototype.destroy();
   });
 
-  it("records small repeated drops without pausing until one frame is lost", () => {
-    const prototype = new G1BPrototype({ physicsStepHz: 60 });
-    prototype.input.pointerDown(81, "plunger");
-    prototype.advance(100);
-    prototype.input.pointerUp(81);
-    prototype.advance(100);
-    expect(prototype.snapshot().baseState).toBe("Playing");
-
-    prototype.advance(80);
-    prototype.advance(80);
-    prototype.advance(80);
-
-    expect(prototype.gameState.suspensionState).toBe("None");
-    expect(prototype.diagnostics()).toMatchObject({
-      runIntegrity: "invalid",
-      fixedStep: {
-        droppedSimulationCount: 3,
-        autoPauseReason: "repeated-dropped-simulation",
-      },
-    });
-
-    prototype.advance(80);
-    prototype.advance(80);
-    expect(prototype.gameState.suspensionState).toBe("SystemInterrupted");
-    prototype.destroy();
-  });
-
   it("resets worlds without growing Planck resources", () => {
     const prototype = new G1BPrototype({ physicsStepHz: 60 });
     const baseline = prototype.diagnostics().physics;
