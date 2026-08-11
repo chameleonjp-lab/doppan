@@ -3,7 +3,7 @@
 - 文書種別: 重要決定・検証仕様・未決定事項
 - 作成日: 2026-08-09
 - 最終更新日: 2026-08-12
-- 版: 1.7
+- 版: 1.8
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 
 ## 1. 運用方法
@@ -579,6 +579,19 @@
 - 影響する文書・実装: `development-preview.yml`、Pages契約テスト、`PRODUCTION_STATUS.md`、`IMPLEMENTATION_PLAN.md`、`DEPLOYMENT_AND_SECURITY_PLAN.md`、`TEST_AND_PREVIEW_PLAN.md`
 - 次の確認: PagesのSourceをActionsへ設定し、`DEVELOPMENT_PREVIEW_ENABLED=true`を確認したうえで、`main`から`agent/vertical-slice`を手動配置する
 
+### D-057 GA理解性パスの統合
+
+- 状態: 統合候補として実装。GA通過ではない
+- 決定日: 2026-08-12
+- 決定:
+  - `L0`や`neutral-return`などの内部識別子を、プレイヤー向けの日本語表示へ変換する
+  - 黄色の目標と、成功後に戻り道が変わることを短い案内で示す
+  - 試遊レポートのボタン表示と、クリップボードの成功・未対応・失敗の状態を一致させる
+  - PR #13で確定したPagesのルート案内・検査済み`dist`配置を維持し、理解性パスの統合候補を新しい信頼済みrefとして扱う
+  - ルール、物理、入力、得点、経路、3球制、保存禁止、外部通信禁止は変更しない
+- 理由: #12を単独で取り込むと、#13マージ後の`main`と分岐してPages確認用refにも表示改善が入らないため
+- 次の検証: 統合候補のCI、Pagesの実配置、管理端末での初見理解・発射理解・反復時の上達
+
 ---
 
 ## 10. 未決定事項
@@ -600,10 +613,11 @@
 
 ## 11. 直近の順序
 
-1. PagesのSource、Environment、Repository variableを確認し、`agent/vertical-slice`を手動配置する
+1. PagesのSource、Environment、Repository variableを確認し、`agent/ga-clarity-pages-sync`を手動配置する
 2. ルート案内、`/_preview/current/`の起動、ビルドSHA、検索除外を実URLで確認する
-3. G3 / GAで戻り再構成型の初見理解と反復時の上達を試遊する
-4. GA開始時にG1-A / G1-Bの端末確認をまとめて行う
-5. RCで対応端末と名称・規約を最終確認する
+3. 統合候補のChromium / WebKit CIと独立レビューを確認する
+4. G3 / GAで戻り再構成型の初見理解と反復時の上達を試遊する
+5. GA開始時にG1-A / G1-Bの端末確認をまとめて行う
+6. RCで対応端末と名称・規約を最終確認する
 
 最新状態は[制作状況](./PRODUCTION_STATUS.md)を正本とする。

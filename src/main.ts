@@ -10,6 +10,8 @@ import {
 } from "./game";
 import {
   GRAYBOX_PATH_LENGTH,
+  formatGrayboxReturnRouteLabel,
+  formatGrayboxTargetLabel,
   type GrayboxAlphaSnapshot,
 } from "./graybox";
 import type { PhysicsStepHz } from "./loop/fixed-step-clock";
@@ -351,11 +353,11 @@ function updateDiagnostics(diagnostics: GaSessionDiagnostics): void {
 function updateGraybox(snapshot: GrayboxAlphaSnapshot): void {
   grayboxElements.target.textContent =
     snapshot.graybox.activeTargetIds.length > 0
-      ? snapshot.graybox.activeTargetIds.join(" / ")
+      ? snapshot.graybox.activeTargetIds.map((targetId) => formatGrayboxTargetLabel(targetId)).join(" / ")
       : snapshot.graybox.climaxState === "active"
         ? "クライマックス中"
         : "目標なし";
-  grayboxElements.returnRoute.textContent = snapshot.graybox.returnRouteId;
+  grayboxElements.returnRoute.textContent = formatGrayboxReturnRouteLabel(snapshot.graybox.returnRouteId);
   grayboxElements.progress.textContent =
     `${snapshot.graybox.completedShotIds.length} / ${GRAYBOX_PATH_LENGTH}`;
   grayboxElements.score.textContent = String(snapshot.graybox.score);
@@ -409,8 +411,12 @@ async function showPlaytestReport(): Promise<void> {
   const report = session.playtestReportJson();
   reportOutput.hidden = false;
   reportOutput.textContent = report;
+  const clipboard = navigator.clipboard;
   try {
-    await navigator.clipboard?.writeText(report);
+    if (clipboard === undefined) {
+      throw new Error("Clipboard API is unavailable");
+    }
+    await clipboard.writeText(report);
     const active = session.snapshot().phase === "launch-ready" || session.snapshot().phase === "playing";
     setStatus("試遊レポートを表示・コピーしました", active);
   } catch {

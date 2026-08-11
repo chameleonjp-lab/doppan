@@ -12,13 +12,13 @@ const rootGuide = readFileSync(
 const robots = readFileSync(new URL("../../pages/root/robots.txt", import.meta.url), "utf8");
 
 describe("GitHub Pages development preview contract", () => {
-  it("allows the merged G3 / GA branch only through the trusted preview path", () => {
-    expect(workflow).toContain("default: agent/vertical-slice");
-    expect(workflow).toContain("github.ref == 'refs/heads/agent/vertical-slice'");
+  it("allows the current integrated G3 / GA branch only through the trusted preview path", () => {
+    expect(workflow).toContain("default: agent/ga-clarity-pages-sync");
+    expect(workflow).toContain("github.ref == 'refs/heads/agent/ga-clarity-pages-sync'");
     expect(workflow).toContain(
-      "refs/heads/agent/g1a-technical-foundation|refs/heads/agent/g1b-physics-prototype|refs/heads/agent/vertical-slice",
+      "refs/heads/agent/g1a-technical-foundation|refs/heads/agent/g1b-physics-prototype|refs/heads/agent/vertical-slice|refs/heads/agent/ga-clarity-pages-sync",
     );
-    expect(workflow).toContain("refs/remotes/origin/agent/vertical-slice");
+    expect(workflow).toContain("refs/remotes/origin/agent/ga-clarity-pages-sync");
     expect(workflow).toContain("refs/pull/*) exit 1");
   });
 

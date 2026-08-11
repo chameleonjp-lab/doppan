@@ -218,6 +218,13 @@ h1 {
   text-align: right;
 }
 
+.graybox-guide {
+  margin: 10px 0 0;
+  color: #f6e2b3;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .graybox-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

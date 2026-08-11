@@ -4,7 +4,7 @@
 - 初版作成日: 2026-08-09
 - 最終更新日: 2026-08-12
 - 版: 5.6
-- 状態: G0.5調査完了・G1-A通過・G1-B通過・G2自動ゲート通過・G3/GA縦切りマージ済み・Pages確認準備中
+- 状態: G0.5調査完了・G1-A通過・G1-B通過・G2自動ゲート通過・G3/GA技術縦切りマージ済み・理解性パス統合中・Pages確認準備中
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 上位文書: [ゲーム制作・プロデュース計画書](./GAME_PRODUCTION_PLAN.md)
 - 技術の正本:
@@ -177,7 +177,7 @@ G3 / GAの技術縦切りPR #11はマージ済みである。確認ページへ�
 
 - Pagesのルートは`pages/root/root-guide.html`から作る案内だけにする
 - ゲームは`/_preview/current/`へ配置する
-- `agent/vertical-slice`を信頼済みrefとして`workflow_dispatch`で指定する
+- `agent/vertical-slice`または`agent/ga-clarity-pages-sync`を信頼済みrefとして`workflow_dispatch`で指定する
 - `refs/pull/*`とallowlist外のrefは拒否する
 - ルート、プレビューの起動、ビルドSHA、`robots.txt`を実URLで確認する
 
@@ -704,6 +704,6 @@ G3 / GAの3球縦切りはPR #11でマージ済みである。次はゲームル
 
 > ルートに案内だけを置き、`/_preview/current/`で検査済みのG3 / GAが起動し、ビルドSHAまで確認できること。
 
-次の作業単位では、`development-preview.yml`へ`agent/vertical-slice`を信頼済みrefとして追加し、ルート案内・プレビュー分離・Pages配信契約を自動検査する。PagesのSource設定、Environment承認、Repository variable、手動workflow実行はGitHub側で確認する。ゲームルール、本番素材、ランキング、保存、外部通信は変更しない。Pages確認後に管理端末の試遊へ進む。
+次の作業単位では、`development-preview.yml`へ`agent/ga-clarity-pages-sync`を信頼済みrefとして追加し、PR #12の理解性パスを取り込んだ検査済みビルドをルート案内・プレビュー分離の契約へ接続する。PagesのSource設定、Environment承認、Repository variable、手動workflow実行はGitHub側で確認する。ゲームルール、本番素材、ランキング、保存、外部通信は変更しない。Pages確認と統合候補のCI後に管理端末の試遊へ進む。
 
 本番盤面、本番素材、本番音、個人アカウント、記録保存、ランキング、Supabase、外部分析、広告、決済は含めない。

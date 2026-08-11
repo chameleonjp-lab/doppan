@@ -4,7 +4,7 @@
 - 作成日: 2026-08-09
 - 最終更新日: 2026-08-12
 - 版: 2.5
-- 状態: G1-A / G1-B / G2自動ゲート通過・G3 / GA縦切りマージ済み・Pages確認待ち
+- 状態: G1-A / G1-B / G2 / G3・GA技術縦切り自動ゲート通過・理解性パス統合中・Pages確認待ち
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [ゲームエンジン設計](./ENGINEERING_ARCHITECTURE.md)
@@ -175,7 +175,7 @@ mainへワークフローを取り込んだ後:
 - `workflow_dispatch`
 - 入力: branchまたはcommit SHA、表示名
 - 同一リポジトリ内の信頼済みrefだけを対象
-- G1-A / G1-Bと、G3 / GAのマージ済み`agent/vertical-slice`を明示allowlistし、checkoutしたSHAが対象ブランチの現在tipと一致する場合だけ実行
+- G1-A / G1-B、G3 / GAのマージ済み`agent/vertical-slice`、および理解性パス統合候補の`agent/ga-clarity-pages-sync`を明示allowlistし、checkoutしたSHAが対象ブランチの現在tipと一致する場合だけ実行
 - `refs/pull/*`とallowlist外のSHAを拒否
 
 外部フォークでは実行しない。
