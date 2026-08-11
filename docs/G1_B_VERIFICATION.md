@@ -16,7 +16,7 @@ G1-Bは、本番盤面や操作感を確定する段階ではなく、入力、�
 | 項目 | 結果 |
 | --- | --- |
 | TypeScript・ESLint・依存境界 | `npm run typecheck`、`npm run lint` 成功 |
-| 単体・物理試験 | 15ファイル・100件成功 |
+| 単体・物理試験 | 15ファイル・103件成功 |
 | 物理試験行列 | 13,824件成功。60/120Hz、4速度、3角度、12固有接触位置、4フリッパー位相、外周角・レーン・狭路・左右フリッパー根元/先端で対象fixtureの実`ImpactEvent`とsolver slop内の分離を確認 |
 | フリッパー耐久 | 左右を含む1,000周期でjoint範囲・有限値を維持。根元と先端の球筋差も確認 |
 | 発射3帯 | 最小・中間・最大を各10回、乱数なしで再現 |
@@ -29,7 +29,7 @@ G1-Bは、本番盤面や操作感を確定する段階ではなく、入力、�
 | リセット・資源 | active runを含む20回再開始後もbody、fixture、joint、ループ、購読を基準値へ復帰 |
 | 入力遅延経路 | 入力→物理、入力→描画を別集計し、中央値・p95・最大・件数を最大256標本で保持 |
 | 本番ビルド・容量 | `npm run build`成功、JavaScript+CSS gzip 186,740 / 614,400 bytes。build時刻により数十bytes変動 |
-| Chromium / WebKit定義 | 2ブラウザ・計26件を列挙。Draft PRのGitHub Actions実行結果で確定する |
+| Chromium / WebKit実行 | 2ブラウザ・計26件。GitHub Actions CI run #13でquality、Chromium、WebKitの3ジョブが成功 |
 
 ## 設計仮説値
 
@@ -55,10 +55,12 @@ G1-Bは、本番盤面や操作感を確定する段階ではなく、入力、�
 - 安全位置の円対fixture判定を5点標本からPlanck shape overlapへ変更
 - gateのopen/closeを物理filter、runtime、表示snapshotで同期
 
-## Draft時点の残件
+## Draftゲート通過後の扱い
 
-- GitHub Actions上のChromium・WebKit計26件を通す
+- 自動ゲートの残件なし。GitHub Actions CI run #13でChromium・WebKit計26件を通過
+- G1-Bを通過扱いにするかは、ユーザー本人が最終判断する
+- 端末固有の二本指、Safari挙動、体感遅延、発熱はGA開始時へ引き継ぐ
 
 独立再レビューは、初回指摘と追加hardeningを反映した最終スナップショットに対してDraft Go、新規P0/P1/P2なしと判定しました。
 
-これらが終わるまでG1-B通過、GA開始、正式公開は扱いません。
+ユーザー本人の最終判断まではG1-Bの正式通過、GA開始、正式公開は扱いません。CI成功だけを根拠にReady化、マージ、Pages公開は行いません。
