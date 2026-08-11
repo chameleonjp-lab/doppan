@@ -2,9 +2,9 @@
 
 - 文書種別: CI・ブラウザ試験・節目の端末確認・GitHub Pages確認枠
 - 作成日: 2026-08-09
-- 最終更新日: 2026-08-11
-- 版: 2.4
-- 状態: G1-A / G1-B / G2自動ゲート通過・G3 / GA縦切り実装中
+- 最終更新日: 2026-08-12
+- 版: 2.5
+- 状態: G1-A / G1-B / G2自動ゲート通過・G3 / GA縦切りマージ済み・Pages確認待ち
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [ゲームエンジン設計](./ENGINEERING_ARCHITECTURE.md)
@@ -175,10 +175,12 @@ mainへワークフローを取り込んだ後:
 - `workflow_dispatch`
 - 入力: branchまたはcommit SHA、表示名
 - 同一リポジトリ内の信頼済みrefだけを対象
-- G1-A / G1-Bの専用内部ブランチを明示allowlistし、checkoutしたSHAが対象ブランチの現在tipと一致する場合だけ実行
+- G1-A / G1-Bと、G3 / GAのマージ済み`agent/vertical-slice`を明示allowlistし、checkoutしたSHAが対象ブランチの現在tipと一致する場合だけ実行
 - `refs/pull/*`とallowlist外のSHAを拒否
 
 外部フォークでは実行しない。
+
+2026-08-12に公開URLを確認した結果、ルートが`/src/main.ts`を直接配信して「初期化中」のまま停止した。この状態はブラウザ試験の成功とは別のPages配信不備である。PagesのSourceをActionsへ設定し、検査済み`dist`を`/_preview/current/`へ配置してから、実URLの確認を行う。
 
 ### 4.5 `production-deploy.yml`
 
@@ -216,6 +218,15 @@ G1-Aで固定したG7前の構成:
 ```
 
 実URLはREADMEや本書へ固定せず、ユーザー本人がActionsのdeployment summaryから開く。このURLは外部へ案内しない。ただし公開URLであり、推測アクセスを完全には防げない。
+
+確認ページの実URL合格条件:
+
+- ルートは`pages/root/root-guide.html`の案内だけを表示する
+- `/_preview/current/`の`index.html`が`assets/*.js`を参照するビルド済み成果物である
+- `src/main.ts`をブラウザへ直接配信しない
+- ルートとプレビューの両方に`noindex`または`robots.txt`の検索除外がある
+- 画面に環境名とビルドSHAが表示される
+- `/_preview/current/`でWebGL起動、3球状態、結果、再挑戦、非保存境界を確認できる
 
 ### 5.1 一件だけにする理由
 

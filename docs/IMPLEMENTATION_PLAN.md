@@ -2,9 +2,9 @@
 
 - 文書種別: 技術方針・実装工程・完成条件
 - 初版作成日: 2026-08-09
-- 最終更新日: 2026-08-11
-- 版: 5.5
-- 状態: G0.5調査完了・G1-A通過・G1-B通過・G2仮図形自動ゲート通過・G3/GA縦切り実装中
+- 最終更新日: 2026-08-12
+- 版: 5.6
+- 状態: G0.5調査完了・G1-A通過・G1-B通過・G2自動ゲート通過・G3/GA縦切りマージ済み・Pages確認準備中
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 上位文書: [ゲーム制作・プロデュース計画書](./GAME_PRODUCTION_PLAN.md)
 - 技術の正本:
@@ -170,6 +170,18 @@ G1-Aでは`planck`をlockへ含め、最小の物理世界・動的body・1ス�
 - 確認ページ一件だけを未告知で配置
 - `noindex`を設定
 - 公開URLなので秘密性は保証しない
+
+### 5.1.1 G3 / GA確認ページ
+
+G3 / GAの技術縦切りPR #11はマージ済みである。確認ページへ出す成果物は、リポジトリ直下の`index.html`や`src/main.ts`ではなく、同じワークフロー内で検査したViteの`dist`だけに限定する。
+
+- Pagesのルートは`pages/root/root-guide.html`から作る案内だけにする
+- ゲームは`/_preview/current/`へ配置する
+- `agent/vertical-slice`を信頼済みrefとして`workflow_dispatch`で指定する
+- `refs/pull/*`とallowlist外のrefは拒否する
+- ルート、プレビューの起動、ビルドSHA、`robots.txt`を実URLで確認する
+
+2026-08-12の公開URL確認では、ルートが`/src/main.ts`を直接配信し、画面が初期化中のまま停止した。この状態をG3 / GAの公開確認合格とは扱わない。PagesのSourceをActionsへ設定し、検査済み成果物を配置した後に再確認する。
 
 ### 5.2 `main`
 
@@ -617,6 +629,8 @@ G3 / GAの実装では、本番素材や正式公開を始めず、G2の仮図�
 
 実装範囲と自動検証は[G3/GA縦切り検証記録](./G3_GA_VERTICAL_SLICE_VERIFICATION.md)で管理する。
 
+PR #11はマージ済みで、GitHub Actions Run #24のquality、Chromium、WebKitが成功した。残る確認はPagesのビルド済み成果物配信、実URLのルート分離、管理端末の試遊である。
+
 ### VS
 
 [中心体験・表現計画](./CORE_EXPERIENCE_PLAN.md)の固定範囲を統合する。
@@ -684,12 +698,12 @@ agent/release-candidate
 
 ## 19. 次の実装
 
-G2仮図形のマージ後は、仮図形をG3 / GAの3球縦切りへ移す。
+G3 / GAの3球縦切りはPR #11でマージ済みである。次はゲームルールを変えず、検査済みのビルド成果物を開発確認ページへ正しく配置する。
 
 確認すること:
 
-> 成功ショットで戻り道が変わり、変化した戻り道が次の狙いとフリッパー操作を変えること。
+> ルートに案内だけを置き、`/_preview/current/`で検査済みのG3 / GAが起動し、ビルドSHAまで確認できること。
 
-次の実装単位は`agent/vertical-slice`とし、G2の物理・入力・状態・安全停止を再利用する。3球制、球間進行、結果、端末内試遊レポートを追加する。実装範囲と自動検証は[G3/GA縦切り検証記録](./G3_GA_VERTICAL_SLICE_VERIFICATION.md)へ記録する。新しい本番素材、ランキング、保存、外部通信は含めない。端末確認はGAの開始時にまとめる。
+次の作業単位では、`development-preview.yml`へ`agent/vertical-slice`を信頼済みrefとして追加し、ルート案内・プレビュー分離・Pages配信契約を自動検査する。PagesのSource設定、Environment承認、Repository variable、手動workflow実行はGitHub側で確認する。ゲームルール、本番素材、ランキング、保存、外部通信は変更しない。Pages確認後に管理端末の試遊へ進む。
 
 本番盤面、本番素材、本番音、個人アカウント、記録保存、ランキング、Supabase、外部分析、広告、決済は含めない。
