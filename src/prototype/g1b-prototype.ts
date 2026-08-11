@@ -30,6 +30,14 @@ export interface G1BPrototypeOptions {
 
 const FULL_CHARGE_SECONDS = 1.2;
 
+function canLaunchFrom(baseState: GameState["baseState"]): boolean {
+  return baseState === "LaunchReady" || baseState === "NextBallReady";
+}
+
+function canAcceptGameplayInput(baseState: GameState["baseState"]): boolean {
+  return baseState === "Playing" || canLaunchFrom(baseState);
+}
+
 /** Connects input, fixed time, Planck, and plain presentation snapshots. */
 export class G1BPrototype {
   public readonly input: InputController;
@@ -71,7 +79,8 @@ export class G1BPrototype {
       isActionEnabled: (action) =>
         !this.gameState.isFatalRecovery &&
         this.gameState.suspensionState === "None" &&
-        (action !== "plunger" || this.gameState.baseState === "LaunchReady"),
+        canAcceptGameplayInput(this.gameState.baseState) &&
+        (action !== "plunger" || canLaunchFrom(this.gameState.baseState)),
     });
   }
 
@@ -111,7 +120,7 @@ export class G1BPrototype {
         if (input.plunger) {
           this.chargeSteps += 1;
         } else if (plungerReleased && this.plungerWasPressed) {
-          if (this.gameState.baseState === "LaunchReady") {
+          if (canLaunchFrom(this.gameState.baseState)) {
             launch = this.launchCharge;
           }
         }

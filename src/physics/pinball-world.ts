@@ -481,7 +481,8 @@ export class PinballWorld {
     // launch) are still applied deterministically below.
     const terminalEvents = this.gameState.drainPendingTerminalEvents();
     if (terminalEvents.length > 0) {
-      this.resetBallToLaunch();
+      const terminalBaseState = this.gameState.baseState;
+      this.resetBallToLaunch(terminalBaseState === "Result" ? "Result" : "LaunchReady");
       const contacts = this.contactBuffer.flushStep(nextStepId);
       this.lastContactBatch = contacts;
       const executedCommands = this.executeCommands(nextStepId);
@@ -1152,14 +1153,14 @@ export class PinballWorld {
     }
   }
 
-  private resetBallToLaunch(): void {
+  private resetBallToLaunch(nextBaseState: BaseState = "LaunchReady"): void {
     this.ballBody.setActive(true);
     this.ballBody.setTransform(planck.Vec2(this.launchPosition.x, this.launchPosition.y), 0);
     this.ballBody.setLinearVelocity(planck.Vec2(0, 0));
     this.ballBody.setAngularVelocity(0);
     this.ballBody.setAwake(true);
     this.drainedValue = false;
-    this.gameState.transitionBase("LaunchReady");
+    this.gameState.transitionBase(nextBaseState);
   }
 
   private clearBallLifetimeSafetyState(): void {

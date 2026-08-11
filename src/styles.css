@@ -247,6 +247,36 @@ h1 {
   white-space: nowrap;
 }
 
+.ga-session-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin: 8px 0 0;
+}
+
+.ga-session-grid div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(121, 226, 194, 0.16);
+  border-radius: 10px;
+  background: rgba(10, 16, 31, 0.52);
+}
+
+.ga-session-grid dt {
+  color: #8f9bb3;
+  font-size: 0.63rem;
+}
+
+.ga-session-grid dd {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: #79e2c2;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .play-layout {
   display: grid;
   grid-template-columns: minmax(240px, 430px) minmax(220px, 1fr);
@@ -408,6 +438,36 @@ h1 {
   display: none;
 }
 
+.report-panel {
+  margin-top: 14px;
+}
+
+.report-note {
+  margin: 0;
+  color: #8f9bb3;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.playtest-report {
+  max-height: 320px;
+  margin: 10px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba(121, 226, 194, 0.2);
+  border-radius: 12px;
+  color: #cfeee4;
+  background: rgba(4, 9, 19, 0.82);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.playtest-report[hidden] {
+  display: none;
+}
+
 .landscape-hint {
   display: none;
   margin: 12px 0 0;
@@ -470,6 +530,10 @@ summary:focus-visible {
   }
 
   .graybox-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ga-session-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

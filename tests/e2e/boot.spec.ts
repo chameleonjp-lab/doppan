@@ -47,7 +47,7 @@ function assertSingleRuntime(
   expect(observation.pixi?.tickerStarted).toBe(false);
 }
 
-test.describe("G2 graybox boot surface", () => {
+test.describe("G3 / GA vertical slice boot surface", () => {
   test.beforeEach(({ page }) => {
     const errors: string[] = [];
     pageErrors.set(page, errors);
@@ -72,10 +72,36 @@ test.describe("G2 graybox boot surface", () => {
     await expect(page.locator("[data-graybox='target']")).toHaveText("L0 / R0");
     await expect(page.locator("[data-graybox='progress']")).toHaveText("0 / 5");
     expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
-    await expect(page.locator("[data-status]")).toHaveText("実行中");
+    await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");
+    await expect(page.locator("[data-status]")).toHaveAttribute("data-active", "true");
     await expect(page.locator("[data-build-environment]")).toHaveText(
       /development-preview|production|test/,
     );
+  });
+
+  test("exposes the three-ball session and an in-memory playtest report", async ({ page }) => {
+    await page.goto("/");
+    await waitForG1B(page);
+
+    const ga = await page.evaluate(() => {
+      const api = window.__DOPPAN_GA__;
+      if (api === undefined) {
+        throw new Error("window.__DOPPAN_GA__ is not available");
+      }
+      return {
+        snapshot: api.getSnapshot(),
+        report: api.getPlaytestReport(),
+        reportJson: api.getPlaytestReportJson(),
+      };
+    });
+
+    expect(ga.snapshot.phase).toBe("launch-ready");
+    expect(ga.snapshot.totalBalls).toBe(3);
+    expect(ga.snapshot.ballsRemaining).toBe(3);
+    expect(ga.report.ruleVersion).toBe("ga-vertical-slice-1");
+    expect(ga.report.events).toEqual([{ type: "game-start", physicsStepId: 0 }]);
+    expect(ga.reportJson).toContain('"totalBalls": 3');
+    expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
   });
 
   test("routes a fully charged Space launch into the main board", async ({ page }) => {

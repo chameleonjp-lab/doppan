@@ -1,7 +1,7 @@
 import type { GameState } from "../game";
 import type { InputController } from "../input";
 import type { PhysicsStepHz } from "../loop/fixed-step-clock";
-import type { PinballSnapshot, PinballWorld } from "../physics";
+import type { PinballSnapshot, PinballStepResult, PinballWorld } from "../physics";
 import { createGrayboxTableDefinition } from "../table";
 import { G1BPrototype, type G1BPrototypeDiagnostics } from "../prototype";
 import { GrayboxRuntime, type GrayboxRuntimeSnapshot } from "./graybox-runtime";
@@ -17,6 +17,7 @@ export interface GrayboxAlphaDiagnostics extends G1BPrototypeDiagnostics {
 export interface GrayboxAlphaOptions {
   readonly physicsStepHz?: PhysicsStepHz;
   readonly onFatalError?: (error: unknown) => void;
+  readonly onPhysicsStep?: (result: PinballStepResult) => void;
 }
 
 /** G2's playable graybox wrapper around the already-tested G1-B foundation. */
@@ -35,7 +36,13 @@ export class GrayboxAlpha {
       ...(options.physicsStepHz === undefined ? {} : { physicsStepHz: options.physicsStepHz }),
       table: createGrayboxTableDefinition(),
       ...(this.onFatalError === undefined ? {} : { onFatalError: this.onFatalError }),
-      onPhysicsStep: (result) => this.runtimeState.consume(result, this.prototype.world),
+      onPhysicsStep: (result) => {
+        this.runtimeState.consume(result, this.prototype.world);
+        if (result.drained) {
+          this.runtimeState.onBallEnded(result.physicsStepId);
+        }
+        options.onPhysicsStep?.(result);
+      },
     });
     this.input = this.prototype.input;
     this.runtimeState.initialize(this.prototype.world);

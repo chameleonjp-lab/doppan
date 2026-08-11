@@ -143,6 +143,13 @@ export class GrayboxRuntime {
     this.initialize(world);
   }
 
+  /** Ends only the ball-scoped combo; game progress remains intact. */
+  public onBallEnded(physicsStepId: number): void {
+    this.comboValue = 0;
+    this.lastEventLabelValue = "球終了。次の球で経路を続ける";
+    this.lastEventPhysicsStepIdValue = physicsStepId;
+  }
+
   public snapshot(world: PinballWorld): GrayboxRuntimeSnapshot {
     const nextTargetId = this.activeTargetIdsValue[0] ?? null;
     return {
