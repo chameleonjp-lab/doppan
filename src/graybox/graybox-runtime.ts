@@ -197,7 +197,7 @@ export class GrayboxRuntime {
 
   private completeTarget(targetId: GrayboxTargetId, physicsStepId: number, world: PinballWorld): void {
     if (!this.activeTargetIdsValue.includes(targetId) || this.climaxStateValue === "active") {
-      this.lastEventLabelValue = `${TARGET_LABEL[targetId]}は今の目標ではない`;
+      this.lastEventLabelValue = `${formatGrayboxTargetLabel(targetId)}は今の目標ではない`;
       this.lastEventPhysicsStepIdValue = physicsStepId;
       return;
     }
