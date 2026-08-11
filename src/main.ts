@@ -4,9 +4,12 @@ import { registerGameLoopHmrDispose, type GameLoop } from "./runtime";
 import { createPixiRuntime, type PixiRuntime } from "./rendering/pixi-app";
 import { bindPrototypeInput } from "./ui/prototype-input-bindings";
 import {
+  GaSession,
+  type GaSessionDiagnostics,
+  type GaSessionSnapshot,
+} from "./game";
+import {
   GRAYBOX_PATH_LENGTH,
-  GrayboxAlpha,
-  type GrayboxAlphaDiagnostics,
   type GrayboxAlphaSnapshot,
 } from "./graybox";
 import type { PhysicsStepHz } from "./loop/fixed-step-clock";
@@ -24,10 +27,12 @@ const pauseButton = requiredElement<HTMLButtonElement>("[data-action='toggle-pau
 const resetButton = requiredElement<HTMLButtonElement>("[data-action='reset-prototype']");
 const hzSelect = requiredElement<HTMLSelectElement>("[data-physics-hz]");
 const status = requiredElement<HTMLElement>("[data-status]");
+const copyReportButton = requiredElement<HTMLButtonElement>("[data-action='copy-report']");
 const webglError = requiredElement<HTMLElement>("[data-webgl-error]");
 const prototypeError = requiredElement<HTMLElement>("[data-prototype-error]");
 const canvasHost = requiredElement<HTMLElement>("[data-canvas-host]");
 const chargeProgress = requiredElement<HTMLProgressElement>("[data-launch-charge]");
+const reportOutput = requiredElement<HTMLElement>("[data-playtest-report]");
 const grayboxElements = {
   target: requiredElement<HTMLElement>("[data-graybox='target']"),
   returnRoute: requiredElement<HTMLElement>("[data-graybox='return']"),
@@ -35,6 +40,12 @@ const grayboxElements = {
   score: requiredElement<HTMLElement>("[data-graybox='score']"),
   combo: requiredElement<HTMLElement>("[data-graybox='combo']"),
   event: requiredElement<HTMLElement>("[data-graybox='event']"),
+};
+const gaElements = {
+  ball: requiredElement<HTMLElement>("[data-ga='ball']"),
+  remaining: requiredElement<HTMLElement>("[data-ga='remaining']"),
+  phase: requiredElement<HTMLElement>("[data-ga='phase']"),
+  result: requiredElement<HTMLElement>("[data-ga='result']"),
 };
 const inputButtons = [...root.querySelectorAll<HTMLButtonElement>("button[data-input-action]")];
 const diagnosticsElements = {
@@ -61,7 +72,7 @@ const WEBGL_ERROR_GUIDE =
 const PROTOTYPE_ERROR_GUIDE =
   "入力または物理の安全条件を保てなかったため停止しました。盤面をリセットするか、再読み込みして診断情報を確認してください。";
 
-const prototype = new GrayboxAlpha({
+const session = new GaSession({
   physicsStepHz: parsePhysicsHz(hzSelect.value),
   onFatalError: showPrototypeError,
 });
@@ -95,27 +106,29 @@ function disposeApplication(): void {
   lifecycleController.abort();
   pauseButton.disabled = true;
   resetButton.disabled = true;
+  copyReportButton.disabled = true;
   setInputDisabled(true);
   const activeRuntime = runtime;
   runtime = null;
   gameLoop.dispose();
-  prototype.destroy();
+  session.destroy();
   destroyRuntimeSafely(activeRuntime);
 }
 
 const gameLoop: GameLoop = registerGameLoopHmrDispose(
   (deltaMs, timestampMs) => {
-    prototype.advance(deltaMs);
-    const snapshot = prototype.snapshot();
+    session.advance(deltaMs);
+    const snapshot = session.snapshot();
     runtime?.updatePrototype(snapshot);
     updateGraybox(snapshot);
+    updateSessionUi(snapshot);
     runtime?.step(deltaMs);
     if (runtime !== null) {
-      prototype.markRendered(timestampMs);
+      session.markRendered(timestampMs);
     }
     if (timestampMs - lastDiagnosticsAt >= 100) {
       lastDiagnosticsAt = timestampMs;
-      updateDiagnostics(prototype.diagnostics());
+      updateDiagnostics(session.diagnostics());
     }
   },
   import.meta.hot,
@@ -155,9 +168,10 @@ function showWebglError(error: unknown): void {
   canvasHost.setAttribute("aria-hidden", "true");
   pauseButton.disabled = true;
   resetButton.disabled = true;
+  copyReportButton.disabled = true;
   setInputDisabled(true);
   gameLoop.stop();
-  prototype.safeStop(error, false);
+  session.safeStop(error, false);
   destroyRuntimeSafely(failedRuntime);
   setStatus("WebGL案内を表示中", false);
 }
@@ -168,63 +182,73 @@ function showPrototypeError(error: unknown): void {
   prototypeError.textContent = PROTOTYPE_ERROR_GUIDE;
   prototypeError.dataset.error = message;
   pauseButton.disabled = true;
+  copyReportButton.disabled = true;
   setInputDisabled(true);
   gameLoop.stop();
-  prototype.safeStop(error, false);
+  session.safeStop(error, false);
   setStatus("安全停止中", false);
-  updateDiagnostics(prototype.diagnostics());
+  updateDiagnostics(session.diagnostics());
 }
 
 function togglePause(): void {
   if (!runtime || disposed || pauseButton.disabled) {
     return;
   }
-  if (!prototype.togglePause()) {
+  if (!session.togglePause()) {
     return;
   }
-  const active = prototype.gameState.suspensionState === "None";
+  const active = session.gameState.suspensionState === "None";
   setStatus(active ? "実行中" : "一時停止中", active);
-  const snapshot = prototype.snapshot();
+  const snapshot = session.snapshot();
   runtime.updatePrototype(snapshot);
   updateGraybox(snapshot);
+  updateSessionUi(snapshot);
   runtime.step(0);
-  updateDiagnostics(prototype.diagnostics());
+  updateDiagnostics(session.diagnostics());
 }
 
 function resetPrototype(): void {
   if (!runtime || disposed) {
     return;
   }
-  prototype.reset(parsePhysicsHz(hzSelect.value));
+  session.reset(parsePhysicsHz(hzSelect.value));
   prototypeError.hidden = true;
+  reportOutput.hidden = true;
+  reportOutput.textContent = "";
   pauseButton.disabled = false;
+  copyReportButton.disabled = false;
   setInputDisabled(false);
-  const snapshot = prototype.snapshot();
+  const snapshot = session.snapshot();
   runtime.updatePrototype(snapshot);
   updateGraybox(snapshot);
   runtime.step(0);
-  setStatus("実行中", true);
+  updateSessionUi(snapshot);
   if (!gameLoop.isRunning) {
     gameLoop.start();
   }
-  updateDiagnostics(prototype.diagnostics());
+  updateDiagnostics(session.diagnostics());
 }
 
 pauseButton.addEventListener("click", togglePause, { signal: lifecycleController.signal });
 resetButton.addEventListener("click", resetPrototype, { signal: lifecycleController.signal });
 hzSelect.addEventListener("change", resetPrototype, { signal: lifecycleController.signal });
+copyReportButton.addEventListener(
+  "click",
+  () => void showPlaytestReport(),
+  { signal: lifecycleController.signal },
+);
 
 bindPrototypeInput({
   root,
   keyboardTarget: window,
   visibilityTarget: document,
-  input: prototype.input,
+  input: session.input,
   controller: lifecycleController,
   onPauseToggle: togglePause,
   onVisibilityChange: (hidden) => {
     gameLoop.discardElapsedTime();
-    prototype.setVisibility(hidden);
-    const active = !hidden && prototype.gameState.suspensionState === "None";
+    session.setVisibility(hidden);
+    const active = !hidden && session.gameState.suspensionState === "None";
     setStatus(hidden ? "画面非表示で停止中" : active ? "実行中" : "一時停止中", active);
   },
   onError: showPrototypeError,
@@ -244,7 +268,7 @@ const forceFailure = (() => {
 })();
 
 async function initializePixiRuntime(): Promise<boolean> {
-  if (prototype.gameState.isFatalRecovery) {
+  if (session.gameState.isFatalRecovery) {
     gameLoop.stop();
     setInputDisabled(true);
     return false;
@@ -277,15 +301,16 @@ async function initializePixiRuntime(): Promise<boolean> {
       return false;
     }
     runtime = created;
-    const snapshot = prototype.snapshot();
+    const snapshot = session.snapshot();
     runtime.updatePrototype(snapshot);
     updateGraybox(snapshot);
     runtime.step(0);
     pauseButton.disabled = false;
     resetButton.disabled = false;
+    copyReportButton.disabled = false;
     setInputDisabled(false);
-    setStatus("実行中", true);
-    updateDiagnostics(prototype.diagnostics());
+    updateSessionUi(snapshot);
+    updateDiagnostics(session.diagnostics());
     if (!gameLoop.start()) {
       throw new Error("The single game loop could not be started");
     }
@@ -298,7 +323,7 @@ async function initializePixiRuntime(): Promise<boolean> {
   }
 }
 
-function updateDiagnostics(diagnostics: GrayboxAlphaDiagnostics): void {
+function updateDiagnostics(diagnostics: GaSessionDiagnostics): void {
   diagnosticsElements.hz.textContent = `${diagnostics.fixedStep.physicsStepHz} Hz`;
   diagnosticsElements.step.textContent = String(diagnostics.fixedStep.physicsStepId);
   diagnosticsElements.queue.textContent = `${diagnostics.inputQueueSize} / 256`;
@@ -308,7 +333,7 @@ function updateDiagnostics(diagnostics: GrayboxAlphaDiagnostics): void {
     `${diagnostics.fixedStep.droppedSimulationCount}回 · ${diagnostics.fixedStep.droppedSimulationMs.toFixed(1)}ms`;
   diagnosticsElements.integrity.textContent = diagnostics.runIntegrity;
   diagnosticsElements.integrity.dataset.valid = String(diagnostics.runIntegrity === "valid");
-  diagnosticsElements.shot.textContent = prototype.snapshot().shotProgress[0]?.currentState ?? "Idle";
+  diagnosticsElements.shot.textContent = session.snapshot().shotProgress[0]?.currentState ?? "Idle";
   diagnosticsElements.speed.textContent = diagnostics.physics.ballSpeed.toFixed(2);
   diagnosticsElements.physicsLatency.textContent = formatLatency(
     diagnostics.inputLatency.inputToPhysics.medianMs,
@@ -338,11 +363,60 @@ function updateGraybox(snapshot: GrayboxAlphaSnapshot): void {
   grayboxElements.event.textContent = snapshot.graybox.lastEventLabel ?? "—";
 }
 
-function updateGrayboxFromDiagnostics(diagnostics: GrayboxAlphaDiagnostics): void {
+function updateGrayboxFromDiagnostics(diagnostics: GaSessionDiagnostics): void {
   updateGraybox({
-    ...prototype.snapshot(),
+    ...session.snapshot(),
     graybox: diagnostics.graybox,
   });
+}
+
+function updateSessionUi(snapshot: GaSessionSnapshot): void {
+  gaElements.ball.textContent = `${snapshot.currentBall} / ${snapshot.totalBalls}`;
+  gaElements.remaining.textContent = String(snapshot.ballsRemaining);
+  gaElements.phase.textContent = formatPhase(snapshot.phase);
+  gaElements.result.textContent = snapshot.result === null ? "—" : String(snapshot.result.score);
+  if (session.gameState.suspensionState !== "None") {
+    setInputDisabled(true);
+    return;
+  }
+  if (snapshot.phase === "launch-ready") {
+    setStatus(`球${snapshot.currentBall} 発射待ち`, true);
+  } else if (snapshot.phase === "playing") {
+    setStatus(`球${snapshot.currentBall} プレイ中`, true);
+  } else if (snapshot.phase === "ball-ending") {
+    setStatus("球終了。次の球を準備中", false);
+  } else {
+    setStatus("結果表示", false);
+  }
+  pauseButton.disabled = snapshot.phase === "result" || runtime === null;
+  setInputDisabled(snapshot.phase === "result" || runtime === null);
+}
+
+function formatPhase(phase: GaSessionSnapshot["phase"]): string {
+  switch (phase) {
+    case "launch-ready":
+      return "発射待ち";
+    case "playing":
+      return "プレイ中";
+    case "ball-ending":
+      return "球終了";
+    case "result":
+      return "結果";
+  }
+}
+
+async function showPlaytestReport(): Promise<void> {
+  const report = session.playtestReportJson();
+  reportOutput.hidden = false;
+  reportOutput.textContent = report;
+  try {
+    await navigator.clipboard?.writeText(report);
+    const active = session.snapshot().phase === "launch-ready" || session.snapshot().phase === "playing";
+    setStatus("試遊レポートを表示・コピーしました", active);
+  } catch {
+    const active = session.snapshot().phase === "launch-ready" || session.snapshot().phase === "playing";
+    setStatus("試遊レポートを表示しました", active);
+  }
 }
 
 function formatLatency(medianMs: number | null, p95Ms: number | null): string {
@@ -361,14 +435,18 @@ declare global {
     __DOPPAN_G1B__?: {
       getLoopDiagnostics: () => ReturnType<GameLoop["diagnostics"]>;
       getPixiDiagnostics: () => PixiDiagnostics | null;
-      getPrototypeDiagnostics: () => GrayboxAlphaDiagnostics;
-      getSnapshot: () => GrayboxAlphaSnapshot;
+      getPrototypeDiagnostics: () => GaSessionDiagnostics;
+      getSnapshot: () => GaSessionSnapshot;
       reset: (physicsStepHz?: PhysicsStepHz) => void;
       reinitializeRenderer: () => Promise<boolean>;
     };
     __DOPPAN_GA__?: {
-      getPrototypeDiagnostics: () => GrayboxAlphaDiagnostics;
-      getSnapshot: () => GrayboxAlphaSnapshot;
+      getPrototypeDiagnostics: () => GaSessionDiagnostics;
+      getSessionDiagnostics: () => GaSessionDiagnostics;
+      getSnapshot: () => GaSessionSnapshot;
+      getPlaytestReport: () => ReturnType<GaSession["playtestReport"]>;
+      getPlaytestReportJson: () => string;
+      reset: (physicsStepHz?: PhysicsStepHz) => void;
     };
   }
 }
@@ -402,30 +480,38 @@ window.__DOPPAN_G1A__ = {
 window.__DOPPAN_G1B__ = {
   getLoopDiagnostics: () => gameLoop.diagnostics(),
   getPixiDiagnostics,
-  getPrototypeDiagnostics: () => prototype.diagnostics(),
-  getSnapshot: () => prototype.snapshot(),
-  reset: (physicsStepHz = prototype.physicsStepHz) => {
+  getPrototypeDiagnostics: () => session.diagnostics(),
+  getSnapshot: () => session.snapshot(),
+  reset: (physicsStepHz = session.physicsStepHz) => {
     hzSelect.value = String(physicsStepHz);
-    prototype.reset(physicsStepHz);
+    session.reset(physicsStepHz);
     setInputDisabled(runtime === null);
-    const snapshot = prototype.snapshot();
+    const snapshot = session.snapshot();
     runtime?.updatePrototype(snapshot);
     updateGraybox(snapshot);
+    updateSessionUi(snapshot);
     runtime?.step(0);
     if (runtime !== null) {
-      setStatus("実行中", true);
+      setInputDisabled(false);
       if (!gameLoop.isRunning) {
         gameLoop.start();
       }
     }
-    updateDiagnostics(prototype.diagnostics());
+    updateDiagnostics(session.diagnostics());
   },
   reinitializeRenderer: initializePixiRuntime,
 };
 
 window.__DOPPAN_GA__ = {
-  getPrototypeDiagnostics: () => prototype.diagnostics(),
-  getSnapshot: () => prototype.snapshot(),
+  getPrototypeDiagnostics: () => session.diagnostics(),
+  getSessionDiagnostics: () => session.diagnostics(),
+  getSnapshot: () => session.snapshot(),
+  getPlaytestReport: () => session.playtestReport(),
+  getPlaytestReportJson: () => session.playtestReportJson(),
+  reset: (physicsStepHz = session.physicsStepHz) => {
+    hzSelect.value = String(physicsStepHz);
+    resetPrototype();
+  },
 };
 
 void initializePixiRuntime();
