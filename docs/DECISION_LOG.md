@@ -2,8 +2,8 @@
 
 - 文書種別: 重要決定・検証仕様・未決定事項
 - 作成日: 2026-08-09
-- 最終更新日: 2026-08-11
-- 版: 1.6
+- 最終更新日: 2026-08-12
+- 版: 1.7
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 
 ## 1. 運用方法
@@ -565,6 +565,20 @@
 - 自動検証の合格は技術的な縦切りの合格であり、初見理解、反復時の上達、操作感、面白さの合格とは扱わない
 - 次の検証: 管理端末で初見15秒理解、3〜5ゲーム後の上達、片側連打の支配性、iPhone Safariの操作感を確認する
 
+### D-056 G3 / GA確認ページの配信境界
+
+- 状態: 決定
+- 決定日: 2026-08-12
+- 決定:
+  - G3 / GAの技術縦切りはPR #11とCI Run #24の成功をもって実装済みとする
+  - G7前のPagesルートは案内だけにし、ゲームは`/_preview/current/`へ置く
+  - プレビューは`development-preview.yml`が検査したVite `dist`だけを使う
+  - `agent/vertical-slice`を同一リポジトリ内の信頼済みrefとしてallowlistする
+  - 未変換の`src/main.ts`をルートから直接配信する状態は、ゲームが表示されても確認ページとして不合格とする
+- 理由: 2026-08-12の公開URL確認で、ソースTypeScriptが直接配信され、画面が初期化中のまま停止したため。ルートとビルド成果物の責任を分け、同じ不具合を自動検査で検出できるようにする。
+- 影響する文書・実装: `development-preview.yml`、Pages契約テスト、`PRODUCTION_STATUS.md`、`IMPLEMENTATION_PLAN.md`、`DEPLOYMENT_AND_SECURITY_PLAN.md`、`TEST_AND_PREVIEW_PLAN.md`
+- 次の確認: PagesのSourceをActionsへ設定し、`DEVELOPMENT_PREVIEW_ENABLED=true`を確認したうえで、`main`から`agent/vertical-slice`を手動配置する
+
 ---
 
 ## 10. 未決定事項
@@ -586,9 +600,10 @@
 
 ## 11. 直近の順序
 
-1. G3 / GA縦切りの自動ゲートと独立レビューを確認する
-2. G3 / GAで戻り再構成型の初見理解と反復時の上達を試遊する
-3. GA開始時にG1-A / G1-Bの端末確認をまとめて行う
-4. RCで対応端末と名称・規約を最終確認する
+1. PagesのSource、Environment、Repository variableを確認し、`agent/vertical-slice`を手動配置する
+2. ルート案内、`/_preview/current/`の起動、ビルドSHA、検索除外を実URLで確認する
+3. G3 / GAで戻り再構成型の初見理解と反復時の上達を試遊する
+4. GA開始時にG1-A / G1-Bの端末確認をまとめて行う
+5. RCで対応端末と名称・規約を最終確認する
 
 最新状態は[制作状況](./PRODUCTION_STATUS.md)を正本とする。
