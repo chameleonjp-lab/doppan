@@ -81,9 +81,9 @@ test.describe("G1-B boot surface", () => {
     // performance, timers, and event timestamps on the same deterministic
     // timeline while the production dropped-frame policy remains unchanged.
     await page.clock.install({ time: new Date("2026-08-11T00:00:00.000Z") });
+    await page.clock.pauseAt(new Date("2026-08-11T00:00:01.000Z"));
     await page.goto("/");
     await waitForG1B(page);
-    await page.clock.pauseAt(await page.evaluate(() => Date.now()));
 
     await page.keyboard.down("Space");
     await page.clock.runFor(1_200);
