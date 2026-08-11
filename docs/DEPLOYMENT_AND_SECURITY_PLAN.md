@@ -2,8 +2,9 @@
 
 - 文書種別: GitHub Pages・環境分離・GitHub Actions権限・未告知運用
 - 作成日: 2026-08-09
-- 版: 1.1
-- 状態: G1-A実装中
+- 最終更新日: 2026-08-10
+- 版: 1.2
+- 状態: G1-A自動ゲート通過・Pages実配置は後続工程
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [推奨実装計画書](./IMPLEMENTATION_PLAN.md)

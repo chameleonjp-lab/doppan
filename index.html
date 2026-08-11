@@ -4,47 +4,96 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="robots" content="noindex, nofollow, noarchive" />
-    <title>DOPPAN — G1-A technical foundation</title>
+    <title>DOPPAN — G1-B 物理試作</title>
   </head>
   <body>
     <main class="app-shell" data-app-root>
       <section class="boot-panel" aria-labelledby="page-title">
-        <p class="eyebrow">DEVELOPMENT PREVIEW · 一般公開前 / technical foundation</p>
-        <h1 id="page-title">DOPPAN G1-A</h1>
+        <p class="eyebrow">DEVELOPMENT PREVIEW · 一般公開前 / physics prototype</p>
+        <h1 id="page-title">DOPPAN G1-B</h1>
         <p class="lead">
-          開発用の起動画面です。WebGLの状態とビルド情報を確認してから、Spaceキーまたは画面のボタンでループを開始できます。
+          左右のボタンでフリッパーを動かします。発射を押し続け、離すと強さに応じて球を打ち出します。
         </p>
-        <p class="lead">このURLは公開状態です。アクセス制限された秘密環境ではありません。</p>
+        <p class="preview-warning">このURLは公開状態です。アクセス制限された秘密環境ではありません。</p>
 
-        <div class="build-grid" aria-label="build information">
-          <div class="build-item">
-            <span class="build-label">環境</span>
-            <strong class="build-value" data-build-environment>loading</strong>
+        <details class="build-details">
+          <summary>ビルド情報</summary>
+          <div class="build-grid" aria-label="build information">
+            <div class="build-item">
+              <span class="build-label">環境</span>
+              <strong class="build-value" data-build-environment>loading</strong>
+            </div>
+            <div class="build-item">
+              <span class="build-label">対象</span>
+              <strong class="build-value" data-build-target>loading</strong>
+            </div>
+            <div class="build-item">
+              <span class="build-label">SHA</span>
+              <strong class="build-value" data-build-sha>loading</strong>
+            </div>
+            <div class="build-item">
+              <span class="build-label">ビルド日時</span>
+              <strong class="build-value" data-build-at>loading</strong>
+            </div>
           </div>
-          <div class="build-item">
-            <span class="build-label">対象</span>
-            <strong class="build-value" data-build-target>loading</strong>
-          </div>
-          <div class="build-item">
-            <span class="build-label">SHA</span>
-            <strong class="build-value" data-build-sha>loading</strong>
-          </div>
-          <div class="build-item">
-            <span class="build-label">ビルド日時</span>
-            <strong class="build-value" data-build-at>loading</strong>
-          </div>
-        </div>
+        </details>
 
-        <div class="controls">
-          <button type="button" class="loop-button" data-action="toggle-loop" aria-pressed="false" disabled>開始 (Space)</button>
+        <div class="prototype-toolbar" aria-label="試作設定">
+          <button type="button" class="toolbar-button primary" data-action="toggle-pause" aria-pressed="false" disabled>
+            一時停止 (Esc)
+          </button>
+          <label class="hz-control">
+            <span>物理更新</span>
+            <select data-physics-hz aria-label="物理更新回数">
+              <option value="60" selected>60 Hz</option>
+              <option value="120">120 Hz</option>
+            </select>
+          </label>
+          <button type="button" class="toolbar-button" data-action="reset-prototype" disabled>盤面をリセット</button>
           <span class="loop-status" data-status role="status" aria-live="polite">初期化中</span>
         </div>
 
-        <div class="canvas-host" data-canvas-host aria-label="Pixi renderer surface"></div>
-        <p class="webgl-error" data-webgl-error hidden role="alert">
-          WebGL描画を開始または継続できませんでした。ページを再読み込みするか、ブラウザのハードウェアアクセラレーションを確認してください。
-        </p>
-        <p class="landscape-hint">横画面では高さが限られるため、端末を縦向きにすると確認しやすくなります。</p>
+        <div class="play-layout">
+          <div class="canvas-host" data-canvas-host aria-label="G1-B ピンボール試作盤面"></div>
+
+          <section class="diagnostics-panel" aria-label="技術診断">
+            <h2>技術診断</h2>
+            <dl class="diagnostics-grid">
+              <div><dt>物理</dt><dd data-diagnostic="hz">60 Hz</dd></div>
+              <div><dt>ステップ</dt><dd data-diagnostic="step">0</dd></div>
+              <div><dt>入力待ち</dt><dd data-diagnostic="queue">0 / 256</dd></div>
+              <div><dt>物体 / 部品 / 関節</dt><dd data-diagnostic="resources">0 / 0 / 0</dd></div>
+              <div><dt>時間切捨て</dt><dd data-diagnostic="dropped">0回 · 0.0ms</dd></div>
+              <div><dt>記録整合</dt><dd data-diagnostic="integrity" data-valid="true">valid</dd></div>
+              <div><dt>安全ショット</dt><dd data-diagnostic="shot">Idle</dd></div>
+              <div><dt>球速</dt><dd data-diagnostic="speed">0.00</dd></div>
+              <div><dt>入力→物理 中央 / 95%</dt><dd data-diagnostic="physics-latency">未計測</dd></div>
+              <div><dt>入力→描画 中央 / 95%</dt><dd data-diagnostic="draw-latency">未計測</dd></div>
+            </dl>
+          </section>
+        </div>
+
+        <section class="input-panel" aria-label="ピンボール操作">
+          <button type="button" class="flipper-control left" data-input-action="leftFlipper" aria-label="左フリッパー">
+            左
+            <small>Z / ←</small>
+          </button>
+          <button type="button" class="flipper-control right" data-input-action="rightFlipper" aria-label="右フリッパー">
+            右
+            <small>/ / →</small>
+          </button>
+          <div class="launch-control-wrap">
+            <button type="button" class="launch-control" data-input-action="plunger">
+              押してためる・離して発射
+              <small>Space</small>
+            </button>
+            <progress data-launch-charge max="1" value="0" aria-label="発射強度"></progress>
+          </div>
+        </section>
+
+        <p class="webgl-error" data-webgl-error hidden role="alert"></p>
+        <p class="webgl-error" data-prototype-error hidden role="alert"></p>
+        <p class="landscape-hint">横画面では高さが限られます。縦向きのほうが盤面全体を確認しやすくなります。</p>
       </section>
     </main>
     <noscript>この画面を利用するにはJavaScriptを有効にしてください。</noscript>

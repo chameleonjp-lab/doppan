@@ -177,6 +177,12 @@ export class GameLoop {
     };
   }
 
+  /** Discards wall-clock time across visibility and system interruption boundaries. */
+  public discardElapsedTime(): void {
+    this.lastFrameAtValue = null;
+    this.lastDeltaValue = 0;
+  }
+
   private schedule(generation: number): void {
     if (!this.running || this.disposed || generation !== this.generationValue) {
       return;

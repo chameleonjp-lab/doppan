@@ -39,9 +39,9 @@ async function main() {
     total += (await gzipAsync(source)).byteLength;
   }
 
-  console.log(`G1-A JavaScript+CSS gzip: ${total} bytes (limit ${LIMIT_BYTES} bytes)`);
+  console.log(`DOPPAN JavaScript+CSS gzip: ${total} bytes (limit ${LIMIT_BYTES} bytes)`);
   if (total > LIMIT_BYTES) {
-    throw new Error("G1-A JavaScript+CSS gzip size exceeds 600 KiB");
+    throw new Error("DOPPAN JavaScript+CSS gzip size exceeds 600 KiB");
   }
 }
 

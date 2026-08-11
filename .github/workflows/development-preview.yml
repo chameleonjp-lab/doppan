@@ -4,12 +4,13 @@ on:
   push:
     branches:
       - agent/g1a-technical-foundation
+      - agent/g1b-physics-prototype
   workflow_dispatch:
     inputs:
       ref:
         description: "Checkout ref for this same-repository preview"
         required: true
-        default: agent/g1a-technical-foundation
+        default: agent/g1b-physics-prototype
         type: string
       display_name:
         description: "Build label shown on the boot screen"
@@ -33,7 +34,9 @@ jobs:
     if: >-
       github.repository == 'chameleonjp-lab/doppan' &&
       ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/agent/g1a-technical-foundation'))
+      (github.event_name == 'push' &&
+      (github.ref == 'refs/heads/agent/g1a-technical-foundation' ||
+      github.ref == 'refs/heads/agent/g1b-physics-prototype')))
     name: verify development preview
     runs-on: ubuntu-24.04
     permissions:
@@ -51,8 +54,13 @@ jobs:
         env:
           REQUESTED_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
         run: |
-          test "$GITHUB_EVENT_NAME" != "push" || \
-            test "$GITHUB_REF" = "refs/heads/agent/g1a-technical-foundation"
+          if test "$GITHUB_EVENT_NAME" = "push"
+          then
+            case "$GITHUB_REF" in
+              refs/heads/agent/g1a-technical-foundation|refs/heads/agent/g1b-physics-prototype) ;;
+              *) exit 1 ;;
+            esac
+          fi
           case "$REQUESTED_REF" in
             refs/pull/*) exit 1 ;;
           esac

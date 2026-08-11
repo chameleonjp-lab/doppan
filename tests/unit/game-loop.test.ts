@@ -90,6 +90,22 @@ describe("GameLoop", () => {
     expect(loop.diagnostics().activeLoopCount).toBe(0);
   });
 
+  it("discards hidden wall-clock time before the next frame", () => {
+    const raf = new FakeRaf();
+    const updates: number[] = [];
+    const loop = new GameLoop((deltaMs) => updates.push(deltaMs), { driver: raf });
+
+    loop.start();
+    raf.flush(16);
+    raf.flush(32);
+    loop.discardElapsedTime();
+    raf.flush(5_032);
+
+    expect(updates).toEqual([0, 16, 0]);
+    expect(loop.diagnostics().lastDeltaMs).toBe(0);
+    loop.dispose();
+  });
+
   it("stops safely when the update callback throws", () => {
     const raf = new FakeRaf();
     const errors: unknown[] = [];

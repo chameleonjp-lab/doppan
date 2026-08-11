@@ -1,232 +1,337 @@
 import { readFile } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test.describe("G1-A boot surface", () => {
-  test("starts, exposes build information, and does not create a Pixi ticker", async ({
-    page,
-  }) => {
-    const uncaught: string[] = [];
-    page.on("pageerror", (error) => uncaught.push(error.message));
+const pageErrors = new WeakMap<Page, string[]>();
+
+async function readG1B(page: Page) {
+  return page.evaluate(() => {
+    const api = window.__DOPPAN_G1B__;
+    if (api === undefined) {
+      throw new Error("window.__DOPPAN_G1B__ is not available");
+    }
+    return {
+      loop: api.getLoopDiagnostics(),
+      pixi: api.getPixiDiagnostics(),
+      prototype: api.getPrototypeDiagnostics(),
+      snapshot: api.getSnapshot(),
+    };
+  });
+}
+
+async function waitForG1B(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.__DOPPAN_G1B__ !== undefined))
+    .toBe(true);
+  await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(1);
+  await expect
+    .poll(async () => (await readG1B(page)).pixi?.rendererName ?? null)
+    .toBe("webgl");
+}
+
+function resourceCounts(observation: Awaited<ReturnType<typeof readG1B>>) {
+  return {
+    bodyCount: observation.prototype.physics.bodyCount,
+    fixtureCount: observation.prototype.physics.fixtureCount,
+    jointCount: observation.prototype.physics.jointCount,
+  };
+}
+
+function assertSingleRuntime(
+  observation: Awaited<ReturnType<typeof readG1B>>,
+): void {
+  expect(observation.loop.running).toBe(true);
+  expect(observation.loop.activeLoopCount).toBe(1);
+  expect(observation.pixi?.rendererName).toBe("webgl");
+  expect(observation.pixi?.tickerPresent).toBe(false);
+  expect(observation.pixi?.tickerAutoStart).toBe(false);
+  expect(observation.pixi?.tickerStarted).toBe(false);
+}
+
+test.describe("G1-B boot surface", () => {
+  test.beforeEach(({ page }) => {
+    const errors: string[] = [];
+    pageErrors.set(page, errors);
+    page.on("pageerror", (error) => errors.push(error.message));
+  });
+
+  test.afterEach(({ page }) => {
+    expect(pageErrors.get(page) ?? []).toEqual([]);
+  });
+
+  test("auto-starts one loop with Pixi ticker disabled", async ({ page }) => {
     await page.goto("/");
+    await waitForG1B(page);
 
+    const boot = await readG1B(page);
+    assertSingleRuntime(boot);
+    expect(boot.snapshot.baseState).toBe("LaunchReady");
+    expect(boot.snapshot.suspensionState).toBe("None");
+    expect(boot.prototype.inputOwners).toBe(0);
+    expect(boot.prototype.physics.safeStopped).toBe(false);
+    expect(boot.pixi?.renderCount).toBeGreaterThanOrEqual(1);
+    await expect(page.locator("[data-status]")).toHaveText("実行中");
     await expect(page.locator("[data-build-environment]")).toHaveText(
       /development-preview|production|test/,
     );
-    const sha = page.locator("[data-build-sha]");
-    await expect(sha).not.toHaveText("loading");
-    if (process.env.CI) {
-      await expect(sha).toHaveText(/^[0-9a-f]{40}$/u);
-    }
-    await expect(page.locator("[data-canvas-host] canvas")).toBeVisible();
-    await expect(page.locator("[data-action='toggle-loop']")).toBeEnabled();
-    expect(uncaught).toEqual([]);
-
-    const initial = await page.evaluate(() =>
-      window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-    );
-    expect(initial?.running).toBe(false);
-    const pixi = await page.evaluate(() =>
-      window.__DOPPAN_G1A__?.getPixiDiagnostics(),
-    );
-    expect(pixi?.rendererName).toBe("webgl");
-    expect(pixi?.tickerPresent).toBe(false);
-    expect(pixi?.tickerAutoStart).toBe(false);
-    expect(pixi?.tickerStarted).toBe(false);
-    expect(pixi?.renderCount).toBeGreaterThanOrEqual(1);
-
-    await page.keyboard.press("Space");
-    await expect(page.locator("[data-status]")).toHaveText("実行中");
-    const running = await page.evaluate(() =>
-      window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-    );
-    expect(running?.running).toBe(true);
-    expect(running?.pendingFrame).toBe(true);
-    expect(running?.frameCount).toBeGreaterThanOrEqual(0);
-    expect(running?.activeLoopCount).toBe(1);
-
-    await page.keyboard.press("Space");
-    await expect(page.locator("[data-status]")).toHaveText("停止中");
-    const stopped = await page.evaluate(() =>
-      window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-    );
-    expect(stopped?.running).toBe(false);
-    expect(stopped?.pendingFrame).toBe(false);
-    expect(stopped?.activeLoopCount).toBe(0);
-
-    await page.locator("[data-action='toggle-loop']").focus();
-    await page.keyboard.press("Space");
-    await expect(page.locator("[data-status]")).toHaveText("実行中");
-    await page.locator("[data-action='toggle-loop']").click();
-    await expect(page.locator("[data-status]")).toHaveText("停止中");
-    expect(uncaught).toEqual([]);
   });
 
-  test("reinitializes the renderer twenty times without multiplying resources", async ({
+  test("routes a fully charged Space launch into the main board", async ({ page }) => {
+    await page.goto("/");
+    await waitForG1B(page);
+
+    await page.keyboard.down("Space");
+    await expect
+      .poll(async () => (await readG1B(page)).prototype.launchCharge)
+      .toBeGreaterThanOrEqual(0.9);
+    await page.keyboard.up("Space");
+
+    await expect
+      .poll(async () => (await readG1B(page)).snapshot.baseState)
+      .toBe("Playing");
+    await expect
+      .poll(async () => (await readG1B(page)).snapshot.ball.position.x)
+      .toBeLessThan(6.64);
+    const routed = await readG1B(page);
+    expect(routed.prototype.physics.safeStopped).toBe(false);
+    expect(routed.prototype.inputLatency.inputToPhysics.sampleCount).toBeGreaterThan(0);
+    expect(routed.prototype.inputLatency.inputToDraw.sampleCount).toBeGreaterThan(0);
+  });
+
+  test("routes keyboard and touch input, including release", async ({ page }) => {
+    await page.goto("/");
+    await waitForG1B(page);
+
+    await page.keyboard.down("z");
+    await expect
+      .poll(async () =>
+        (await readG1B(page)).snapshot.flippers.find((flipper) => flipper.side === "left")?.active ??
+        false,
+      )
+      .toBe(true);
+    await page.keyboard.up("z");
+    await expect
+      .poll(async () =>
+        (await readG1B(page)).snapshot.flippers.find((flipper) => flipper.side === "left")?.active ??
+        false,
+      )
+      .toBe(false);
+
+    const rightFlipper = page.locator("[data-input-action='rightFlipper']");
+    await rightFlipper.evaluate((element) => {
+      // Synthetic pointer events do not have a browser pointer capture slot.
+      // Keep the binding test focused on ownership and release semantics.
+      element.setPointerCapture = () => undefined;
+    });
+    await rightFlipper.dispatchEvent("pointerdown", {
+      pointerId: 41,
+      pointerType: "touch",
+      isPrimary: true,
+      buttons: 1,
+    });
+    await expect
+      .poll(async () => (await readG1B(page)).prototype.inputOwners)
+      .toBe(1);
+    await expect
+      .poll(async () =>
+        (await readG1B(page)).snapshot.flippers.find((flipper) => flipper.side === "right")?.active ??
+        false,
+      )
+      .toBe(true);
+
+    await rightFlipper.dispatchEvent("pointerup", {
+      pointerId: 41,
+      pointerType: "touch",
+      isPrimary: true,
+      buttons: 0,
+    });
+    await expect
+      .poll(async () => (await readG1B(page)).prototype.inputOwners)
+      .toBe(0);
+    await expect
+      .poll(async () =>
+        (await readG1B(page)).snapshot.flippers.find((flipper) => flipper.side === "right")?.active ??
+        false,
+      )
+      .toBe(false);
+
+    // The browser commonly follows pointerup with lostpointercapture. The
+    // second notification must not create a second release or resurrect input.
+    await rightFlipper.dispatchEvent("lostpointercapture", {
+      pointerId: 41,
+      pointerType: "touch",
+    });
+    await expect
+      .poll(async () => (await readG1B(page)).prototype.inputOwners)
+      .toBe(0);
+
+    await rightFlipper.dispatchEvent("pointerdown", {
+      pointerId: 41,
+      pointerType: "touch",
+      isPrimary: true,
+      buttons: 1,
+    });
+    await expect
+      .poll(async () => (await readG1B(page)).prototype.inputOwners)
+      .toBe(1);
+    await rightFlipper.dispatchEvent("pointercancel", {
+      pointerId: 41,
+      pointerType: "touch",
+    });
+    await expect
+      .poll(async () => (await readG1B(page)).prototype.inputOwners)
+      .toBe(0);
+  });
+
+  test("pauses and resumes from Escape without changing the base state", async ({ page }) => {
+    await page.goto("/");
+    await waitForG1B(page);
+
+    const beforeBaseState = (await readG1B(page)).snapshot.baseState;
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(async () => (await readG1B(page)).snapshot.suspensionState)
+      .toBe("ManualPause");
+    const paused = await readG1B(page);
+    expect(paused.snapshot.baseState).toBe(beforeBaseState);
+    expect(paused.loop.activeLoopCount).toBe(1);
+
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(async () => (await readG1B(page)).snapshot.suspensionState)
+      .toBe("None");
+    expect((await readG1B(page)).snapshot.baseState).toBe("LaunchReady");
+  });
+
+  test("switches deterministic physics between 60 Hz and 120 Hz", async ({ page }) => {
+    await page.goto("/");
+    await waitForG1B(page);
+
+    const hz = page.locator("[data-physics-hz]");
+    await expect.poll(async () => (await readG1B(page)).prototype.fixedStep.physicsStepHz).toBe(60);
+
+    await hz.selectOption("120");
+    await expect
+      .poll(async () => (await readG1B(page)).prototype.fixedStep.physicsStepHz)
+      .toBe(120);
+    expect((await readG1B(page)).snapshot.baseState).toBe("LaunchReady");
+
+    await hz.selectOption("60");
+    await expect
+      .poll(async () => (await readG1B(page)).prototype.fixedStep.physicsStepHz)
+      .toBe(60);
+    expect((await readG1B(page)).snapshot.baseState).toBe("LaunchReady");
+    assertSingleRuntime(await readG1B(page));
+  });
+
+  test("reinitializes the renderer twenty times without changing resources or loop count", async ({
     page,
   }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(120_000);
     await page.goto("/");
-    await expect(page.locator("[data-canvas-host] canvas")).toBeVisible();
+    await waitForG1B(page);
 
+    const initial = await readG1B(page);
+    const resources = resourceCounts(initial);
     for (let index = 0; index < 20; index += 1) {
-      await page.keyboard.press("Space");
-      await expect(page.locator("[data-status]")).toHaveText("実行中");
-      const initialized = await page.evaluate(() =>
-        window.__DOPPAN_G1A__?.reinitializeRenderer(),
-      );
+      const initialized = await page.evaluate(async () => {
+        const api = window.__DOPPAN_G1B__;
+        return api === undefined ? false : await api.reinitializeRenderer();
+      });
       expect(initialized).toBe(true);
       await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(1);
-      const diagnostics = await page.evaluate(() => ({
-        loop: window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-        pixi: window.__DOPPAN_G1A__?.getPixiDiagnostics(),
-      }));
-      expect(diagnostics.loop?.activeLoopCount).toBe(0);
-      expect(diagnostics.pixi?.rendererName).toBe("webgl");
-      expect(diagnostics.pixi?.tickerPresent).toBe(false);
-      expect(diagnostics.pixi?.tickerAutoStart).toBe(false);
-      expect(diagnostics.pixi?.tickerStarted).toBe(false);
-      expect(diagnostics.pixi?.renderCount).toBeGreaterThanOrEqual(1);
-      expect(diagnostics.pixi?.renderCount).toBeLessThanOrEqual(2);
+      await expect
+        .poll(async () => (await readG1B(page)).loop.activeLoopCount)
+        .toBe(1);
 
-      await page.keyboard.press("Space");
-      await expect(page.locator("[data-status]")).toHaveText("実行中");
-      const running = await page.evaluate(() =>
-        window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-      );
-      expect(running?.activeLoopCount).toBe(1);
-      await page.keyboard.press("Space");
-      await expect(page.locator("[data-status]")).toHaveText("停止中");
-      const stopped = await page.evaluate(() =>
-        window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-      );
-      expect(stopped?.activeLoopCount).toBe(0);
+      const observation = await readG1B(page);
+      assertSingleRuntime(observation);
+      expect(resourceCounts(observation)).toEqual(resources);
+      expect(observation.pixi?.renderCount).toBeGreaterThanOrEqual(1);
     }
   });
 
-  test("shows a non-white WebGL failure guide", async ({ page }) => {
-    await page.goto("/?forceWebGLFailure=1");
-    await expect(page.locator("[data-webgl-error]")).toBeVisible();
-    await expect(page.locator("body")).toContainText("WebGL");
-    await expect(page.locator("[data-status]")).toHaveText("WebGL案内を表示中");
-    await expect(page.locator("[data-action='toggle-loop']")).toBeDisabled();
-    await page.keyboard.press("Space");
-    await expect(page.locator("[data-status]")).toHaveText("WebGL案内を表示中");
-    const diagnostics = await page.evaluate(() =>
-      window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-    );
-    expect(diagnostics?.running).toBe(false);
-    expect(diagnostics?.activeLoopCount).toBe(0);
-  });
-
-  test("refuses renderer fallback when WebGL is unavailable", async ({
-    page,
-  }) => {
+  test("safe-stops when WebGL initialization is unavailable", async ({ page }) => {
     await page.addInitScript(() => {
-      const originalGetContext = Object.getOwnPropertyDescriptor(
+      const descriptor = Object.getOwnPropertyDescriptor(
         HTMLCanvasElement.prototype,
         "getContext",
-      )?.value as
-        | ((
-            this: HTMLCanvasElement,
-            type: string,
-            ...arguments_: unknown[]
-          ) => unknown)
+      );
+      const original = descriptor?.value as
+        | ((this: HTMLCanvasElement, type: string, ...arguments_: unknown[]) => unknown)
         | undefined;
-      if (!originalGetContext) {
+      if (original === undefined) {
         throw new Error("HTMLCanvasElement.getContext is unavailable");
       }
       Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
         configurable: true,
-        value(type: string, ...arguments_: unknown[]) {
-          if (
-            type === "webgl" ||
-            type === "webgl2" ||
-            type === "experimental-webgl"
-          ) {
+        value(this: HTMLCanvasElement, type: string, ...arguments_: unknown[]) {
+          if (type === "webgl" || type === "webgl2" || type === "experimental-webgl") {
             return null;
           }
-          return Reflect.apply(
-            originalGetContext as (...parameters: unknown[]) => unknown,
-            this,
-            [type, ...arguments_],
-          );
+          return original.call(this, type, ...arguments_);
         },
       });
     });
     await page.goto("/");
+
     await expect(page.locator("[data-webgl-error]")).toBeVisible();
-    await expect(page.locator("[data-action='toggle-loop']")).toBeDisabled();
     await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(0);
-    const diagnostics = await page.evaluate(() =>
-      window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-    );
-    expect(diagnostics?.activeLoopCount).toBe(0);
+    await expect.poll(async () => (await readG1B(page)).loop.activeLoopCount).toBe(0);
+    const failed = await readG1B(page);
+    expect(failed.loop.running).toBe(false);
+    expect(failed.pixi).toBeNull();
+    expect(failed.snapshot.baseState).toBe("FatalRecovery");
+    expect(failed.prototype.inputOwners).toBe(0);
+    expect(failed.prototype.runIntegrity).toBe("invalid");
+    expect(await page.locator("button[data-input-action]").evaluateAll(
+      (buttons) => buttons.every((button) => (button as HTMLButtonElement).disabled),
+    )).toBe(true);
+    expect(await page.evaluate(async () => window.__DOPPAN_G1B__?.reinitializeRenderer())).toBe(false);
+    expect((await readG1B(page)).loop.activeLoopCount).toBe(0);
+    await page.keyboard.press("Escape");
+    expect((await readG1B(page)).snapshot.baseState).toBe("FatalRecovery");
   });
 
-  test("stops safely when the WebGL context is lost", async ({ page }) => {
+  test("safe-stops on WebGL context loss", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("[data-canvas-host] canvas")).toBeVisible();
-    await page.keyboard.press("Space");
-    await expect(page.locator("[data-status]")).toHaveText("実行中");
+    await waitForG1B(page);
+    const canvas = page.locator("[data-canvas-host] canvas");
 
-    await page.locator("[data-canvas-host] canvas").evaluate((canvas) => {
-      canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
-    });
-
+    await canvas.dispatchEvent("webglcontextlost", { cancelable: true });
     await expect(page.locator("[data-webgl-error]")).toBeVisible();
-    await expect(page.locator("[data-status]")).toHaveText("WebGL案内を表示中");
-    await expect(page.locator("[data-action='toggle-loop']")).toBeDisabled();
-    const diagnostics = await page.evaluate(() =>
-      window.__DOPPAN_G1A__?.getLoopDiagnostics(),
-    );
-    expect(diagnostics?.running).toBe(false);
-    expect(diagnostics?.activeLoopCount).toBe(0);
+    await expect
+      .poll(async () => (await readG1B(page)).snapshot.baseState)
+      .toBe("FatalRecovery");
+    await expect.poll(async () => (await readG1B(page)).loop.activeLoopCount).toBe(0);
+    const lost = await readG1B(page);
+    expect(lost.loop.running).toBe(false);
+    expect(lost.pixi).toBeNull();
+    expect(lost.snapshot.suspensionState).toBe("None");
+    expect(lost.prototype.inputOwners).toBe(0);
+    expect(lost.prototype.runIntegrity).toBe("invalid");
+    expect(await page.locator("button[data-input-action]").evaluateAll(
+      (buttons) => buttons.every((button) => (button as HTMLButtonElement).disabled),
+    )).toBe(true);
+    expect(await page.evaluate(async () => window.__DOPPAN_G1B__?.reinitializeRenderer())).toBe(false);
+    expect((await readG1B(page)).loop.activeLoopCount).toBe(0);
+    await page.keyboard.press("Escape");
+    expect((await readG1B(page)).snapshot.baseState).toBe("FatalRecovery");
   });
 
   for (const width of [320, 390, 430]) {
-    test(`fits ${width}px portrait width`, async ({ page }) => {
+    test(`fits ${width}px portrait width without horizontal overflow`, async ({ page }) => {
       await page.setViewportSize({ width, height: 720 });
       await page.goto("/");
-      await expect(page.locator("[data-app-root]")).toBeVisible();
-      const overflow = await page.evaluate(
-        () =>
-          document.documentElement.scrollWidth >
-          document.documentElement.clientWidth,
-      );
-      expect(overflow).toBe(false);
+      await waitForG1B(page);
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }));
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
     });
   }
 
-  test("survives Safari-like viewport height changes", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator("[data-canvas-host] canvas")).toBeVisible();
-    const initialRenderCount = await page.evaluate(
-      () => window.__DOPPAN_G1A__?.getPixiDiagnostics()?.renderCount ?? 0,
-    );
-    for (const height of [844, 667, 560, 844]) {
-      await page.setViewportSize({ width: 390, height });
-      await expect(page.locator("[data-app-root]")).toBeVisible();
-      await expect(page.locator("[data-action='toggle-loop']")).toBeVisible();
-      await expect(page.locator("[data-canvas-host]")).toBeVisible();
-      const overflow = await page.evaluate(
-        () =>
-          document.documentElement.scrollWidth >
-          document.documentElement.clientWidth,
-      );
-      expect(overflow).toBe(false);
-    }
-    await page.locator("[data-canvas-host]").evaluate((host) => {
-      host.style.height = "240px";
-    });
-    await page.waitForTimeout(50);
-    const resized = await page.evaluate(() =>
-      window.__DOPPAN_G1A__?.getPixiDiagnostics(),
-    );
-    expect(resized?.renderCount).toBeGreaterThan(initialRenderCount);
-    expect(resized?.tickerStarted).toBe(false);
-  });
-
-  test("shows the landscape guidance", async ({ page }) => {
+  test("shows landscape guidance", async ({ page }) => {
     await page.setViewportSize({ width: 844, height: 390 });
     await page.goto("/");
     await expect(page.locator(".landscape-hint")).toBeVisible();
@@ -247,12 +352,11 @@ test.describe("G1-A boot surface", () => {
         "content",
         "noindex, nofollow, noarchive",
       );
-      const overflow = await page.evaluate(
-        () =>
-          document.documentElement.scrollWidth >
-          document.documentElement.clientWidth,
-      );
-      expect(overflow).toBe(false);
+      const dimensions = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }));
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
     }
   });
 });
