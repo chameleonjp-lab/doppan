@@ -55,13 +55,13 @@ G1-Bは、本番盤面や操作感を確定する段階ではなく、入力、�
 - 安全位置の円対fixture判定を5点標本からPlanck shape overlapへ変更
 - gateのopen/closeを物理filter、runtime、表示snapshotで同期
 
-## Draftゲート通過後の扱い
+## G1-Bマージ後の扱い
 
 - 自動ゲートの残件なし。[GitHub Actions CI Run #13](https://github.com/chameleonjp-lab/doppan/actions/runs/31468805678)でquality、Chromium、WebKitが成功
 - PlaywrightはChromium 13件、WebKit 13件、計26件成功
-- G1-Bを通過扱いにするかは、ユーザー本人が最終判断する
+- PR #8のマージにより、ユーザー本人の判断でG1-Bを通過扱いとした
 - iPhone・iPad実機での二本指、Safari固有挙動、体感遅延、発熱は未実施。計画どおりGA開始時とRCへ引き継ぐ
 
 独立レビューでは、CI向けの製品側安全停止閾値緩和案をP1として却下し、製品仕様を維持しました。最終スナップショットの独立再レビューは、未解決P0・P1・P2-Core・P2-Peripheral 0件、Draft Goと判定しました。
 
-ユーザー本人の最終判断まではG1-Bの正式通過、GA開始、正式公開は扱いません。CI成功だけを根拠にReady化、マージ、Pages公開は行いません。
+G1-Bは通過扱いとする。ただし、GA開始、正式公開、端末確認の完了とは別である。追加のReady化やPages公開を自動的に正式公開へつなげず、G2の中心体験設計とG3 / GAの仮図形検証へ進む。
