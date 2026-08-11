@@ -89,7 +89,9 @@ test.describe("G1-B boot surface", () => {
     await page.clock.runFor(1_200);
     expect((await readG1B(page)).prototype.launchCharge).toBeGreaterThanOrEqual(0.9);
     await page.keyboard.up("Space");
-    await page.clock.runFor(17);
+    // Two 16 ms clock frames guarantee at least one 60 Hz fixed step after
+    // release; a single clock frame is shorter than the 16.667 ms step.
+    await page.clock.runFor(34);
 
     expect((await readG1B(page)).snapshot.baseState).toBe("Playing");
     await page.clock.runFor(1_100);
