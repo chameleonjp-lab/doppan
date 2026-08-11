@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { PinballWorld } from "../../src/physics";
-import { GrayboxRuntime } from "../../src/graybox";
+import {
+  formatGrayboxReturnRouteLabel,
+  formatGrayboxTargetLabel,
+  GrayboxRuntime,
+} from "../../src/graybox";
 import { createGrayboxTableDefinition, validateTableDefinition } from "../../src/table";
 import type { PinballStepResult } from "../../src/physics";
 
@@ -79,6 +83,13 @@ describe("G2 graybox table", () => {
 });
 
 describe("GrayboxRuntime", () => {
+  it("provides player-facing labels for internal target and route ids", () => {
+    expect(formatGrayboxTargetLabel("L0")).toBe("左の安全ショット");
+    expect(formatGrayboxTargetLabel("C1")).toBe("中央のクライマックス入口");
+    expect(formatGrayboxReturnRouteLabel("neutral-return")).toBe("中央の基本戻り");
+    expect(formatGrayboxReturnRouteLabel("climax-return")).toBe("中枢からの安全戻り");
+  });
+
   it("changes both the next target and the physical return gate after a valid shot", () => {
     const world = new PinballWorld({ table: createGrayboxTableDefinition() });
     const runtime = new GrayboxRuntime();
