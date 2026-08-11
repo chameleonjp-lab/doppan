@@ -56,7 +56,7 @@ G2で仮決定した「戻り再構成型」を、本番素材を使わずに仮
 - 成功後の次目標`R1`への切り替え: 成功
 - 成功後の戻りゲート切り替え: 成功
 - 本番ビルド: 成功
-- JavaScript＋CSS gzip: 188,915 bytes / 614,400 bytes
+- JavaScript＋CSS gzip: 188,913 bytes / 614,400 bytes
 
 ブラウザ自動試験26件は、ローカル環境にPlaywrightのChromium/WebKit実行ファイルがないため起動できなかった。コードの合否とは分け、PRのGitHub ActionsでChromiumとWebKitを確認する。
 
