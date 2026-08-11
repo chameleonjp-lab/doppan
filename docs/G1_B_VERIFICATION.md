@@ -28,8 +28,8 @@ G1-Bは、本番盤面や操作感を確定する段階ではなく、入力、�
 | 状態・終端イベント | base/suspension分離、非表示中の球落下保持、復帰後処理、FatalRecoveryラッチを確認 |
 | リセット・資源 | active runを含む20回再開始後もbody、fixture、joint、ループ、購読を基準値へ復帰 |
 | 入力遅延経路 | 入力→物理、入力→描画を別集計し、中央値・p95・最大・件数を最大256標本で保持 |
-| 本番ビルド・容量 | `npm run build`成功、JavaScript+CSS gzip 186,740 / 614,400 bytes。build時刻により数十bytes変動 |
-| Chromium / WebKit実行 | 2ブラウザ・計26件。GitHub Actions CI run #13でquality、Chromium、WebKitの3ジョブが成功 |
+| 本番ビルド・容量 | `npm run build`成功、JavaScript+CSS gzip 186,859 / 614,400 bytes。build時刻により数十bytes変動 |
+| Chromium / WebKit | Chromium 13件、WebKit 13件、計26件成功。[GitHub Actions CI Run #13](https://github.com/chameleonjp-lab/doppan/actions/runs/31468805678) |
 
 ## 設計仮説値
 
@@ -57,10 +57,11 @@ G1-Bは、本番盤面や操作感を確定する段階ではなく、入力、�
 
 ## Draftゲート通過後の扱い
 
-- 自動ゲートの残件なし。GitHub Actions CI run #13でChromium・WebKit計26件を通過
+- 自動ゲートの残件なし。[GitHub Actions CI Run #13](https://github.com/chameleonjp-lab/doppan/actions/runs/31468805678)でquality、Chromium、WebKitが成功
+- PlaywrightはChromium 13件、WebKit 13件、計26件成功
 - G1-Bを通過扱いにするかは、ユーザー本人が最終判断する
-- 端末固有の二本指、Safari挙動、体感遅延、発熱はGA開始時へ引き継ぐ
+- iPhone・iPad実機での二本指、Safari固有挙動、体感遅延、発熱は未実施。計画どおりGA開始時とRCへ引き継ぐ
 
-独立再レビューは、初回指摘と追加hardeningを反映した最終スナップショットに対してDraft Go、新規P0/P1/P2なしと判定しました。
+独立レビューでは、CI向けの製品側安全停止閾値緩和案をP1として却下し、製品仕様を維持しました。最終スナップショットの独立再レビューは、未解決P0・P1・P2-Core・P2-Peripheral 0件、Draft Goと判定しました。
 
 ユーザー本人の最終判断まではG1-Bの正式通過、GA開始、正式公開は扱いません。CI成功だけを根拠にReady化、マージ、Pages公開は行いません。
