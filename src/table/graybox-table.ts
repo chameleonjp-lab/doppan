@@ -87,8 +87,8 @@ const shotDefinitions: readonly TableShotDefinition[] = grayboxShots.map(({ id }
 
 const gateFixtures: readonly TableFixtureDefinition[] = [
   fixture("gate-return-neutral", "lane", "body-gate-return-neutral", 4.5, 3.45, 2.4, 0.18),
-  fixture("gate-return-left-safe", "lane", "body-gate-return-left-safe", 2.2, 6.55, 1.65, 0.18),
-  fixture("gate-return-right-safe", "lane", "body-gate-return-right-safe", 6.8, 6.55, 1.65, 0.18),
+  fixture("gate-return-left-safe", "lane", "body-gate-return-left-safe", 3.0, 6.55, 1.65, 0.18),
+  fixture("gate-return-right-safe", "lane", "body-gate-return-right-safe", 6.0, 6.55, 1.65, 0.18),
   fixture("gate-return-left-cross", "lane", "body-gate-return-left-cross", 2.55, 9.45, 1.9, 0.18, null, 0.18),
   fixture("gate-return-right-cross", "lane", "body-gate-return-right-cross", 6.45, 9.45, 1.9, 0.18, null, -0.18),
   fixture("gate-return-short", "lane", "body-gate-return-short", 4.5, 11.85, 2.1, 0.18),
