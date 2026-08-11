@@ -72,7 +72,8 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     await expect(page.locator("[data-graybox='target']")).toHaveText("L0 / R0");
     await expect(page.locator("[data-graybox='progress']")).toHaveText("0 / 5");
     expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
-    await expect(page.locator("[data-status]")).toHaveText("実行中");
+    await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");
+    await expect(page.locator("[data-status]")).toHaveAttribute("data-active", "true");
     await expect(page.locator("[data-build-environment]")).toHaveText(
       /development-preview|production|test/,
     );
