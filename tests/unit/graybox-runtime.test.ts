@@ -130,7 +130,8 @@ describe("GrayboxRuntime", () => {
       score: 0,
       progress: 0,
     });
-    expect(runtime.snapshot(world).lastEventLabel).toContain("今の目標ではない");
+    expect(runtime.snapshot(world).lastEventLabel).toBe("右の中核ショットは今の目標ではない");
+    expect(runtime.snapshot(world).lastEventLabel).not.toContain("R1");
     world.destroy();
   });
 
