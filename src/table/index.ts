@@ -6,6 +6,7 @@ export {
   createTableRuntimeState,
   validateTableDefinition,
 } from "./g1b-table";
+export { GRAYBOX_TABLE_VERSION, createGrayboxTableDefinition } from "./graybox-table";
 export { PhysicsViewport } from "./viewport";
 export type {
   ScreenPoint,

@@ -1,7 +1,13 @@
 import type { GameState } from "../game";
 import { InputController, type InputLatencyDiagnostics } from "../input";
 import { FixedStepClock, type FixedStepDiagnostics, type PhysicsStepHz } from "../loop/fixed-step-clock";
-import { PinballWorld, type PhysicsDiagnostics, type PinballSnapshot } from "../physics";
+import {
+  PinballWorld,
+  type PhysicsDiagnostics,
+  type PinballSnapshot,
+  type PinballStepResult,
+} from "../physics";
+import type { TableDefinition } from "../table";
 
 export interface G1BPrototypeDiagnostics {
   readonly fixedStep: FixedStepDiagnostics;
@@ -17,6 +23,8 @@ export interface G1BPrototypeDiagnostics {
 
 export interface G1BPrototypeOptions {
   readonly physicsStepHz?: PhysicsStepHz;
+  readonly table?: TableDefinition;
+  readonly onPhysicsStep?: (result: PinballStepResult) => void;
   readonly onFatalError?: (error: unknown) => void;
 }
 
@@ -34,6 +42,10 @@ export class G1BPrototype {
 
   private readonly onFatalError: ((error: unknown) => void) | undefined;
 
+  private readonly onPhysicsStep: ((result: PinballStepResult) => void) | undefined;
+
+  private readonly table: TableDefinition | undefined;
+
   private plungerWasPressed = false;
 
   private chargeSteps = 0;
@@ -47,7 +59,12 @@ export class G1BPrototype {
   public constructor(options: G1BPrototypeOptions = {}) {
     this.physicsStepHzValue = options.physicsStepHz ?? 60;
     this.onFatalError = options.onFatalError;
-    this.worldValue = new PinballWorld({ physicsStepHz: this.physicsStepHzValue });
+    this.onPhysicsStep = options.onPhysicsStep;
+    this.table = options.table;
+    this.worldValue = new PinballWorld({
+      physicsStepHz: this.physicsStepHzValue,
+      ...(this.table === undefined ? {} : { table: this.table }),
+    });
     this.clockValue = new FixedStepClock({ physicsStepHz: this.physicsStepHzValue });
     this.input = new InputController({
       onSafeStop: (error) => this.fail(error),
@@ -113,6 +130,7 @@ export class G1BPrototype {
           right: input.rightFlipper,
           ...(launch === undefined ? {} : { launch }),
         });
+        this.onPhysicsStep?.(stepResult);
         if (stepResult.drained) {
           this.clearLaunchCharge();
           this.input.releaseAll("ball-end");
@@ -211,7 +229,10 @@ export class G1BPrototype {
     this.input.resetSafeStop();
     this.worldValue.destroy();
     this.physicsStepHzValue = physicsStepHz;
-    this.worldValue = new PinballWorld({ physicsStepHz });
+    this.worldValue = new PinballWorld({
+      physicsStepHz,
+      ...(this.table === undefined ? {} : { table: this.table }),
+    });
     this.clockValue = new FixedStepClock({ physicsStepHz });
     this.clearLaunchCharge();
     this.gameplayStartedValue = false;

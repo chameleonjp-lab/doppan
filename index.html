@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="robots" content="noindex, nofollow, noarchive" />
-    <title>DOPPAN — G1-B 物理試作</title>
+    <title>DOPPAN — G2 グレー版アルファ</title>
   </head>
   <body>
     <main class="app-shell" data-app-root>
       <section class="boot-panel" aria-labelledby="page-title">
-        <p class="eyebrow">DEVELOPMENT PREVIEW · 一般公開前 / physics prototype</p>
-        <h1 id="page-title">DOPPAN G1-B</h1>
+        <p class="eyebrow">DEVELOPMENT PREVIEW · 一般公開前 / graybox alpha</p>
+        <h1 id="page-title">DOPPAN G2</h1>
         <p class="lead">
-          左右のボタンでフリッパーを動かします。発射を押し続け、離すと強さに応じて球を打ち出します。
+          左右のボタンでフリッパーを動かします。発射を押し続けて離し、ショットに成功すると、次の目標と球の戻り道が変わります。
         </p>
         <p class="preview-warning">このURLは公開状態です。アクセス制限された秘密環境ではありません。</p>
 
@@ -53,8 +53,25 @@
           <span class="loop-status" data-status role="status" aria-live="polite">初期化中</span>
         </div>
 
+        <section class="graybox-panel" aria-label="グレー版の進行">
+          <div class="graybox-heading">
+            <div>
+              <p class="panel-kicker">G2 仮説検証</p>
+              <h2>つなぎ直す</h2>
+            </div>
+            <p class="graybox-event" data-graybox="event" role="status" aria-live="polite">初期化中</p>
+          </div>
+          <dl class="graybox-grid">
+            <div><dt>次の目標</dt><dd data-graybox="target">L0 / R0</dd></div>
+            <div><dt>球の戻り道</dt><dd data-graybox="return">neutral-return</dd></div>
+            <div><dt>進行</dt><dd data-graybox="progress">0 / 5</dd></div>
+            <div><dt>今回の得点</dt><dd data-graybox="score">0</dd></div>
+            <div><dt>連続成功</dt><dd data-graybox="combo">0</dd></div>
+          </dl>
+        </section>
+
         <div class="play-layout">
-          <div class="canvas-host" data-canvas-host aria-label="G1-B ピンボール試作盤面"></div>
+          <div class="canvas-host" data-canvas-host aria-label="G2 グレー版ピンボール試作盤面"></div>
 
           <section class="diagnostics-panel" aria-label="技術診断">
             <h2>技術診断</h2>

@@ -178,6 +178,75 @@ h1 {
   color: #79e2c2;
 }
 
+.graybox-panel {
+  margin: 14px 0 16px;
+  padding: 14px;
+  border: 1px solid rgba(246, 199, 110, 0.32);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(246, 199, 110, 0.08), rgba(121, 226, 194, 0.04)),
+    rgba(255, 255, 255, 0.035);
+}
+
+.graybox-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-kicker {
+  margin: 0 0 3px;
+  color: #f6c76e;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.graybox-heading h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.graybox-event {
+  max-width: 48ch;
+  margin: 0;
+  color: #dce4f4;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.graybox-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  margin: 12px 0 0;
+}
+
+.graybox-grid div {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(10, 16, 31, 0.68);
+}
+
+.graybox-grid dt {
+  color: #8f9bb3;
+  font-size: 0.63rem;
+}
+
+.graybox-grid dd {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: #f6c76e;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .play-layout {
   display: grid;
   grid-template-columns: minmax(240px, 430px) minmax(220px, 1fr);
@@ -388,6 +457,20 @@ summary:focus-visible {
 
   .loop-status {
     flex-basis: 100%;
+  }
+
+  .graybox-heading {
+    display: block;
+  }
+
+  .graybox-event {
+    max-width: none;
+    margin-top: 8px;
+    text-align: left;
+  }
+
+  .graybox-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
