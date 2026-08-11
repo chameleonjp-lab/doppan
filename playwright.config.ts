@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: true,
   // WebGL pages must not starve one another's RAF chain in CI; otherwise
   // test-worker contention is recorded as gameplay frame loss.
-  workers: process.env.CI ? 1 : undefined,
+  ...(process.env.CI ? { workers: 1 } : {}),
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
