@@ -79,7 +79,7 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     await expect(page.locator("[data-game-overlay='start']")).toBeVisible();
     await expect(page.locator("[data-input-action='leftFlipper']")).toBeDisabled();
     await expect(page.locator("[data-diagnostic='hz']")).toBeHidden();
-    await expect(page.locator(".graybox-guide")).toHaveText("黄色の目標へ当てると、次に球が戻る道が変わります。");
+    await expect(page.locator(".graybox-guide")).toHaveText("黄色く光る目標へ、球をフリッパーで返します。成功すると戻り道が変わります。");
     await expect(page.locator("[data-graybox='progress']")).toHaveText("0 / 5");
     expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
     await expect(page.locator("[data-status]")).toHaveText("ゲーム開始待ち");

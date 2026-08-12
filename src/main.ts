@@ -286,8 +286,11 @@ bindPrototypeInput({
   onVisibilityChange: (hidden) => {
     gameLoop.discardElapsedTime();
     session.setVisibility(hidden);
-    const active = !hidden && session.gameState.suspensionState === "None";
-    setStatus(hidden ? "画面非表示で停止中" : active ? "実行中" : "一時停止中", active);
+    const active = gameStarted && !hidden && session.gameState.suspensionState === "None";
+    setStatus(
+      hidden ? "画面非表示で停止中" : gameStarted ? active ? "実行中" : "一時停止中" : "ゲーム開始待ち",
+      active,
+    );
   },
   onError: showPrototypeError,
 });
@@ -409,6 +412,10 @@ function updateGrayboxFromDiagnostics(diagnostics: GaSessionDiagnostics): void {
 }
 
 function updateSessionUi(snapshot: GaSessionSnapshot): void {
+  gaElements.ball.textContent = String(snapshot.currentBall) + " / " + String(snapshot.totalBalls);
+  gaElements.remaining.textContent = String(snapshot.ballsRemaining);
+  gaElements.phase.textContent = formatPhase(snapshot.phase);
+  gaElements.result.textContent = snapshot.result === null ? "—" : String(snapshot.result.score);
   updateResultOverlay(snapshot);
   if (!gameStarted) {
     setStatus("ゲーム開始待ち", false);
