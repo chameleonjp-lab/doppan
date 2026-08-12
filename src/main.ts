@@ -25,6 +25,8 @@ function requiredElement<T extends Element>(selector: string): T {
 }
 
 const root = requiredElement<HTMLElement>("[data-app-root]");
+const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
+root.dataset.debug = String(debugMode);
 const pauseButton = requiredElement<HTMLButtonElement>("[data-action='toggle-pause']");
 const resetButton = requiredElement<HTMLButtonElement>("[data-action='reset-prototype']");
 const hzSelect = requiredElement<HTMLSelectElement>("[data-physics-hz]");
@@ -35,6 +37,13 @@ const prototypeError = requiredElement<HTMLElement>("[data-prototype-error]");
 const canvasHost = requiredElement<HTMLElement>("[data-canvas-host]");
 const chargeProgress = requiredElement<HTMLProgressElement>("[data-launch-charge]");
 const reportOutput = requiredElement<HTMLElement>("[data-playtest-report]");
+const startGameButton = requiredElement<HTMLButtonElement>("[data-action='start-game']");
+const restartGameButton = requiredElement<HTMLButtonElement>("[data-action='restart-game']");
+const startOverlay = requiredElement<HTMLElement>("[data-game-overlay='start']");
+const resultOverlay = requiredElement<HTMLElement>("[data-game-overlay='result']");
+const resultScore = requiredElement<HTMLElement>("[data-result='score']");
+const resultProgress = requiredElement<HTMLElement>("[data-result='progress']");
+const resultClimax = requiredElement<HTMLElement>("[data-result='climax']");
 const grayboxElements = {
   target: requiredElement<HTMLElement>("[data-graybox='target']"),
   returnRoute: requiredElement<HTMLElement>("[data-graybox='return']"),
@@ -68,6 +77,7 @@ const lifecycleController = new AbortController();
 let disposed = false;
 let runtimeGeneration = 0;
 let lastDiagnosticsAt = -Infinity;
+let gameStarted = false;
 
 const WEBGL_ERROR_GUIDE =
   "WebGL描画を開始または継続できませんでした。ページを再読み込みするか、ブラウザのハードウェアアクセラレーションを確認してください。";
@@ -86,6 +96,19 @@ function setInputDisabled(disabled: boolean): void {
 }
 
 setInputDisabled(true);
+
+function updateResultOverlay(snapshot: GaSessionSnapshot): void {
+  const isResult = gameStarted && snapshot.phase === "result";
+  startOverlay.hidden = gameStarted || session.gameState.isFatalRecovery;
+  resultOverlay.hidden = !isResult;
+  const score = snapshot.result?.score ?? snapshot.graybox.score;
+  const progress = snapshot.result?.progress ?? snapshot.graybox.progress;
+  resultScore.textContent = String(score);
+  resultProgress.textContent =
+    String(Math.round(progress * GRAYBOX_PATH_LENGTH)) + " / " + String(GRAYBOX_PATH_LENGTH);
+  resultClimax.textContent =
+    snapshot.result?.climaxState === "active" ? "クライマックス到達" : "クライマックス未到達";
+}
 
 function destroyRuntimeSafely(target: PixiRuntime | null): { error: unknown } | null {
   if (!target) {
@@ -193,7 +216,7 @@ function showPrototypeError(error: unknown): void {
 }
 
 function togglePause(): void {
-  if (!runtime || disposed || pauseButton.disabled) {
+  if (!runtime || disposed || !gameStarted || pauseButton.disabled) {
     return;
   }
   if (!session.togglePause()) {
@@ -209,17 +232,19 @@ function togglePause(): void {
   updateDiagnostics(session.diagnostics());
 }
 
-function resetPrototype(): void {
+function resetSession(started: boolean): void {
   if (!runtime || disposed) {
     return;
   }
+  gameStarted = started;
   session.reset(parsePhysicsHz(hzSelect.value));
   prototypeError.hidden = true;
   reportOutput.hidden = true;
   reportOutput.textContent = "";
-  pauseButton.disabled = false;
-  copyReportButton.disabled = false;
-  setInputDisabled(false);
+  pauseButton.disabled = !started;
+  resetButton.disabled = false;
+  copyReportButton.disabled = !debugMode;
+  setInputDisabled(!started);
   const snapshot = session.snapshot();
   runtime.updatePrototype(snapshot);
   updateGraybox(snapshot);
@@ -231,6 +256,18 @@ function resetPrototype(): void {
   updateDiagnostics(session.diagnostics());
 }
 
+function beginGame(): void {
+  resetSession(true);
+  startGameButton.blur();
+  restartGameButton.blur();
+}
+
+function resetPrototype(): void {
+  resetSession(gameStarted);
+}
+
+startGameButton.addEventListener("click", beginGame, { signal: lifecycleController.signal });
+restartGameButton.addEventListener("click", beginGame, { signal: lifecycleController.signal });
 pauseButton.addEventListener("click", togglePause, { signal: lifecycleController.signal });
 resetButton.addEventListener("click", resetPrototype, { signal: lifecycleController.signal });
 hzSelect.addEventListener("change", resetPrototype, { signal: lifecycleController.signal });
@@ -247,11 +284,15 @@ bindPrototypeInput({
   input: session.input,
   controller: lifecycleController,
   onPauseToggle: togglePause,
+  isEnabled: () => gameStarted && runtime !== null && !session.gameState.isFatalRecovery,
   onVisibilityChange: (hidden) => {
     gameLoop.discardElapsedTime();
     session.setVisibility(hidden);
-    const active = !hidden && session.gameState.suspensionState === "None";
-    setStatus(hidden ? "画面非表示で停止中" : active ? "実行中" : "一時停止中", active);
+    const active = gameStarted && !hidden && session.gameState.suspensionState === "None";
+    setStatus(
+      hidden ? "画面非表示で停止中" : gameStarted ? active ? "実行中" : "一時停止中" : "ゲーム開始待ち",
+      active,
+    );
   },
   onError: showPrototypeError,
 });
@@ -307,10 +348,10 @@ async function initializePixiRuntime(): Promise<boolean> {
     runtime.updatePrototype(snapshot);
     updateGraybox(snapshot);
     runtime.step(0);
-    pauseButton.disabled = false;
+    pauseButton.disabled = !gameStarted;
     resetButton.disabled = false;
-    copyReportButton.disabled = false;
-    setInputDisabled(false);
+    copyReportButton.disabled = !debugMode;
+    setInputDisabled(!gameStarted);
     updateSessionUi(snapshot);
     updateDiagnostics(session.diagnostics());
     if (!gameLoop.start()) {
@@ -373,25 +414,38 @@ function updateGrayboxFromDiagnostics(diagnostics: GaSessionDiagnostics): void {
 }
 
 function updateSessionUi(snapshot: GaSessionSnapshot): void {
-  gaElements.ball.textContent = `${snapshot.currentBall} / ${snapshot.totalBalls}`;
+  gaElements.ball.textContent = String(snapshot.currentBall) + " / " + String(snapshot.totalBalls);
   gaElements.remaining.textContent = String(snapshot.ballsRemaining);
   gaElements.phase.textContent = formatPhase(snapshot.phase);
   gaElements.result.textContent = snapshot.result === null ? "—" : String(snapshot.result.score);
+  updateResultOverlay(snapshot);
+  if (!gameStarted) {
+    setStatus("ゲーム開始待ち", false);
+    pauseButton.disabled = true;
+    setInputDisabled(true);
+    return;
+  }
+  if (snapshot.phase === "result") {
+    setStatus("結果表示", false);
+    pauseButton.disabled = true;
+    setInputDisabled(true);
+    return;
+  }
   if (session.gameState.suspensionState !== "None") {
+    setStatus("一時停止中", false);
+    pauseButton.disabled = false;
     setInputDisabled(true);
     return;
   }
   if (snapshot.phase === "launch-ready") {
-    setStatus(`球${snapshot.currentBall} 発射待ち`, true);
+    setStatus("球" + snapshot.currentBall + " 発射待ち", true);
   } else if (snapshot.phase === "playing") {
-    setStatus(`球${snapshot.currentBall} プレイ中`, true);
+    setStatus("球" + snapshot.currentBall + " プレイ中", true);
   } else if (snapshot.phase === "ball-ending") {
     setStatus("球終了。次の球を準備中", false);
-  } else {
-    setStatus("結果表示", false);
   }
-  pauseButton.disabled = snapshot.phase === "result" || runtime === null;
-  setInputDisabled(snapshot.phase === "result" || runtime === null);
+  pauseButton.disabled = runtime === null;
+  setInputDisabled(runtime === null);
 }
 
 function formatPhase(phase: GaSessionSnapshot["phase"]): string {

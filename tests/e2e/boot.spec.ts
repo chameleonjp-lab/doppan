@@ -18,6 +18,11 @@ async function readG1B(page: Page) {
   });
 }
 
+async function startGame(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "ゲームを始める" }).click();
+  await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");
+}
+
 async function waitForG1B(page: Page): Promise<void> {
   await expect
     .poll(() => page.evaluate(() => window.__DOPPAN_G1B__ !== undefined))
@@ -71,14 +76,15 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     expect(boot.pixi?.renderCount).toBeGreaterThanOrEqual(1);
     await expect(page.locator("[data-graybox='target']")).toHaveText("左の安全ショット / 右の安全ショット");
     await expect(page.locator("[data-graybox='return']")).toHaveText("中央の基本戻り");
-    await expect(page.locator(".graybox-guide")).toHaveText("黄色の目標へ当てると、次に球が戻る道が変わります。");
+    await expect(page.locator("[data-game-overlay='start']")).toBeVisible();
+    await expect(page.locator("[data-input-action='leftFlipper']")).toBeDisabled();
+    await expect(page.locator("[data-diagnostic='hz']")).toBeHidden();
+    await expect(page.locator(".graybox-guide")).toHaveText("黄色く光る目標へ、球をフリッパーで返します。成功すると戻り道が変わります。");
     await expect(page.locator("[data-graybox='progress']")).toHaveText("0 / 5");
     expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
-    await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");
-    await expect(page.locator("[data-status]")).toHaveAttribute("data-active", "true");
-    await expect(page.locator("[data-build-environment]")).toHaveText(
-      /development-preview|production|test/,
-    );
+    await expect(page.locator("[data-status]")).toHaveText("ゲーム開始待ち");
+    await expect(page.locator("[data-status]")).toHaveAttribute("data-active", "false");
+    await expect(page.locator("[data-build-environment]")).toBeHidden();
   });
 
   test("exposes the three-ball session and an in-memory playtest report", async ({ page }) => {
@@ -116,6 +122,7 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     await page.goto("/");
     await waitForG1B(page);
 
+    await startGame(page);
     await page.keyboard.down("Space");
     await page.clock.runFor(1_200);
     expect((await readG1B(page)).prototype.launchCharge).toBeGreaterThanOrEqual(0.9);
@@ -139,6 +146,7 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     await page.goto("/");
     await waitForG1B(page);
 
+    await startGame(page);
     await page.keyboard.down("z");
     await expect
       .poll(async () =>
@@ -224,6 +232,7 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     await page.goto("/");
     await waitForG1B(page);
 
+    await startGame(page);
     const beforeBaseState = (await readG1B(page)).snapshot.baseState;
     await page.keyboard.press("Escape");
     await expect
@@ -241,7 +250,7 @@ test.describe("G3 / GA vertical slice boot surface", () => {
   });
 
   test("switches deterministic physics between 60 Hz and 120 Hz", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?debug=1");
     await waitForG1B(page);
 
     const hz = page.locator("[data-physics-hz]");

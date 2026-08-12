@@ -43,7 +43,27 @@ const grayboxShots = [
   { id: "C1", x: 4.5, y: 13.75 },
 ] as const;
 
+type GrayboxShotId = (typeof grayboxShots)[number]["id"];
+
+interface GrayboxShotProfile {
+  readonly sensorWidth: number;
+  readonly sensorHeight: number;
+  readonly maxDurationSteps: number;
+}
+
+const SHOT_PROFILES: Readonly<Record<GrayboxShotId, GrayboxShotProfile>> = {
+  L0: { sensorWidth: 1.22, sensorHeight: 0.5, maxDurationSteps: 300 },
+  R0: { sensorWidth: 1.22, sensorHeight: 0.5, maxDurationSteps: 300 },
+  L1: { sensorWidth: 0.92, sensorHeight: 0.44, maxDurationSteps: 220 },
+  R1: { sensorWidth: 0.92, sensorHeight: 0.44, maxDurationSteps: 220 },
+  L2: { sensorWidth: 0.68, sensorHeight: 0.38, maxDurationSteps: 150 },
+  R2: { sensorWidth: 0.68, sensorHeight: 0.38, maxDurationSteps: 150 },
+  C0: { sensorWidth: 0.82, sensorHeight: 0.42, maxDurationSteps: 180 },
+  C1: { sensorWidth: 1.05, sensorHeight: 0.5, maxDurationSteps: 240 },
+};
+
 const shotSensors = grayboxShots.flatMap(({ id, x, y }) => {
+  const profile = SHOT_PROFILES[id];
   const entrySensorId = `${id}-entry`;
   const checkpointSensorId = `${id}-checkpoint`;
   const exitSensorId = `${id}-exit`;
@@ -53,24 +73,24 @@ const shotSensors = grayboxShots.flatMap(({ id, x, y }) => {
       fixtureId: `sensor-${entrySensorId}`,
       purpose: "safe-shot",
       position: point(x, y),
-      width: 0.95,
-      height: 0.42,
+      width: profile.sensorWidth,
+      height: profile.sensorHeight,
     },
     {
       id: checkpointSensorId,
       fixtureId: `sensor-${checkpointSensorId}`,
       purpose: "safe-shot",
       position: point(x, y + 0.72),
-      width: 0.95,
-      height: 0.42,
+      width: profile.sensorWidth,
+      height: profile.sensorHeight,
     },
     {
       id: exitSensorId,
       fixtureId: `sensor-${exitSensorId}`,
       purpose: "safe-shot",
       position: point(x, y + 1.44),
-      width: 0.95,
-      height: 0.42,
+      width: profile.sensorWidth,
+      height: profile.sensorHeight,
     },
   ];
   return sensorRows;
@@ -81,7 +101,7 @@ const shotDefinitions: readonly TableShotDefinition[] = grayboxShots.map(({ id }
   entrySensorId: `${id}-entry`,
   checkpointSensorId: `${id}-checkpoint`,
   exitSensorId: `${id}-exit`,
-  maxDurationSteps: 240,
+  maxDurationSteps: SHOT_PROFILES[id].maxDurationSteps,
   expectedDirection: point(0, 1),
 }));
 
