@@ -74,6 +74,19 @@ function centeredRotatedRectangle(
   ];
 }
 
+function drawTargetMarker(graphics: Graphics, center: Point, size: number): void {
+  const radius = Math.max(8, size * 0.9);
+  graphics
+    .circle(center.x, center.y, radius)
+    .stroke({ color: COLOR.target, width: 2.4, alpha: 0.98 });
+  graphics
+    .moveTo(center.x, center.y - radius * 1.85)
+    .lineTo(center.x - radius * 0.55, center.y - radius * 1.15)
+    .lineTo(center.x + radius * 0.55, center.y - radius * 1.15)
+    .closePath()
+    .fill({ color: COLOR.target, alpha: 0.92 });
+}
+
 function targetIdFromSensor(sensorId: string): (typeof TARGET_IDS)[number] | null {
   const prefix = sensorId.split("-", 1)[0];
   return TARGET_IDS.includes(prefix as (typeof TARGET_IDS)[number])
@@ -177,6 +190,10 @@ export function createGrayboxScene(): GrayboxScene {
         .rect(topLeft.x, topLeft.y, sensor.width * viewport.scale, sensor.height * viewport.scale)
         .fill({ color, alpha: isActive ? 0.34 : 0.1 })
         .stroke({ color, width: isActive ? 2.2 : 1, alpha: isActive ? 0.98 : 0.6 });
+      if (isActive && sensor.id.endsWith("-entry")) {
+        const center = viewport.worldToScreen(sensor.position);
+        drawTargetMarker(graphics, center, sensor.width * viewport.scale);
+      }
       if (isActive && sensor.id.endsWith("-checkpoint")) {
         const center = viewport.worldToScreen(sensor.position);
         graphics

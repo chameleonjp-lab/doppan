@@ -5,6 +5,7 @@ export interface PrototypeInputBindings {
   readonly keyboardTarget: Window;
   readonly visibilityTarget: Document;
   readonly input: InputController;
+  readonly isEnabled?: () => boolean;
   readonly controller?: AbortController;
   readonly onPauseToggle?: () => void;
   readonly onVisibilityChange?: (hidden: boolean) => void;
@@ -102,6 +103,9 @@ export function bindPrototypeInput(bindings: PrototypeInputBindings): AbortContr
       continue;
     }
     element.addEventListener("pointerdown", (event) => {
+      if (bindings.isEnabled?.() === false) {
+        return;
+      }
       event.preventDefault();
       try {
         if (bindings.input.pointerDown(event.pointerId, action, event.timeStamp)) {
@@ -152,7 +156,11 @@ export function bindPrototypeInput(bindings: PrototypeInputBindings): AbortContr
       return;
     }
     const action = keyboardAction(keyboardEvent);
-    if (action === undefined || isInteractive(keyboardEvent.target)) {
+    if (
+      action === undefined ||
+      isInteractive(keyboardEvent.target) ||
+      bindings.isEnabled?.() === false
+    ) {
       return;
     }
     try {
