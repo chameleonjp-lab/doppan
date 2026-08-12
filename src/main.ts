@@ -258,6 +258,8 @@ function resetSession(started: boolean): void {
 
 function beginGame(): void {
   resetSession(true);
+  startGameButton.blur();
+  restartGameButton.blur();
 }
 
 function resetPrototype(): void {
