@@ -577,7 +577,7 @@
   - 未変換の`src/main.ts`をルートから直接配信する状態は、ゲームが表示されても確認ページとして不合格とする
 - 理由: 2026-08-12の公開URL確認で、ソースTypeScriptが直接配信され、画面が初期化中のまま停止したため。ルートとビルド成果物の責任を分け、同じ不具合を自動検査で検出できるようにする。
 - 影響する文書・実装: `development-preview.yml`、Pages契約テスト、`PRODUCTION_STATUS.md`、`IMPLEMENTATION_PLAN.md`、`DEPLOYMENT_AND_SECURITY_PLAN.md`、`TEST_AND_PREVIEW_PLAN.md`
-- 次の確認: PagesのSourceをActionsへ設定し、`DEVELOPMENT_PREVIEW_ENABLED=true`を確認したうえで、`main`から`agent/vertical-slice`を手動配置する
+- 次の確認: PagesのSourceをActionsへ設定し、`DEVELOPMENT_PREVIEW_ENABLED=true`を確認したうえで、`main`を手動配置する
 
 ### D-057 GA理解性パスの統合
 
@@ -591,6 +591,19 @@
   - ルール、物理、入力、得点、経路、3球制、保存禁止、外部通信禁止は変更しない
 - 理由: #12を単独で取り込むと、#13マージ後の`main`と分岐してPages確認用refにも表示改善が入らないため
 - 次の検証: 統合候補のCI、Pagesの実配置、管理端末での初見理解・発射理解・反復時の上達
+
+### D-058 マージ済みmainを確認対象にするPages手動実行
+
+- 状態: 決定
+- 決定日: 2026-08-14
+- 決定:
+  - PR #19のマージで、通常操作から安全ショット、対応フリッパーへの返球、同側入力後の固定物理による上向き再発射までを自動確認済みとする
+  - `development-preview.yml`の手動実行の既定refを`main`にする
+  - `main`へのpushではPagesへ自動配置しない
+  - checkoutしたSHAが`origin/main`の現在tipと一致する場合だけ、検査済み`dist`を`/_preview/current/`へ配置する
+  - 過去の統合候補refは後方互換のためallowlistに残すが、現在の確認対象としない
+- 理由: Pagesの実配置が古い統合候補refのままだと、PR #19を含む最新mainの検査結果と実URLの内容が一致しないため
+- 次の確認: PagesのSource、`github-pages` Environment、`DEVELOPMENT_PREVIEW_ENABLED=true`をGitHub側で確認し、mainを手動配置する
 
 ---
 
@@ -613,7 +626,7 @@
 
 ## 11. 直近の順序
 
-1. PagesのSource、Environment、Repository variableを確認し、`agent/ga-clarity-pages-sync`を手動配置する
+1. PagesのSource、Environment、Repository variableを確認し、`main`を手動配置する
 2. ルート案内、`/_preview/current/`の起動、ビルドSHA、検索除外を実URLで確認する
 3. 統合候補のChromium / WebKit CIと独立レビューを確認する
 4. G3 / GAで戻り再構成型の初見理解と反復時の上達を試遊する

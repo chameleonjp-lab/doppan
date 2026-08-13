@@ -12,7 +12,7 @@ on:
       ref:
         description: "Checkout ref for this same-repository preview"
         required: true
-        default: agent/ga-clarity-pages-sync
+        default: main
         type: string
       display_name:
         description: "Build label shown on the boot screen"
@@ -74,7 +74,8 @@ jobs:
             refs/remotes/origin/agent/g1a-technical-foundation \
             refs/remotes/origin/agent/g1b-physics-prototype \
             refs/remotes/origin/agent/vertical-slice \
-            refs/remotes/origin/agent/ga-clarity-pages-sync
+            refs/remotes/origin/agent/ga-clarity-pages-sync \
+            refs/remotes/origin/main
           do
             if trusted_sha=$(git rev-parse --verify "${trusted_ref}^{commit}" 2>/dev/null) && \
               test "$checked_sha" = "$trusted_sha"

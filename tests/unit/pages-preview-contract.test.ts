@@ -12,14 +12,20 @@ const rootGuide = readFileSync(
 const robots = readFileSync(new URL("../../pages/root/robots.txt", import.meta.url), "utf8");
 
 describe("GitHub Pages development preview contract", () => {
-  it("allows the current integrated G3 / GA branch only through the trusted preview path", () => {
-    expect(workflow).toContain("default: agent/ga-clarity-pages-sync");
+  it("allows the integrated main ref only through the trusted manual preview path", () => {
+    expect(workflow).toContain("default: main");
+    expect(workflow).toContain(
+      "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
+    );
     expect(workflow).toContain("github.ref == 'refs/heads/agent/ga-clarity-pages-sync'");
     expect(workflow).toContain(
       "refs/heads/agent/g1a-technical-foundation|refs/heads/agent/g1b-physics-prototype|refs/heads/agent/vertical-slice|refs/heads/agent/ga-clarity-pages-sync",
     );
     expect(workflow).toContain("refs/remotes/origin/agent/ga-clarity-pages-sync");
+    expect(workflow).toContain("refs/remotes/origin/main");
     expect(workflow).toContain("refs/pull/*) exit 1");
+    const pushConfiguration = workflow.split("  workflow_dispatch:", 1)[0];
+    expect(pushConfiguration).not.toContain("      - main");
   });
 
   it("publishes a verified Vite build below the root guide", () => {
