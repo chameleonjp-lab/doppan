@@ -158,8 +158,8 @@ test.describe("G3 / GA vertical slice boot surface", () => {
 
     await startGame(page);
     await page.keyboard.down("Space");
-    await page.clock.runFor(1_200);
-    expect((await readG1B(page)).prototype.launchCharge).toBeGreaterThanOrEqual(0.9);
+    await page.clock.runFor(1_250);
+    expect((await readG1B(page)).prototype.launchCharge).toBe(1);
     await page.keyboard.up("Space");
     // Two 16 ms clock frames guarantee at least one 60 Hz fixed step after
     // release; a single clock frame is shorter than the 16.667 ms step.
@@ -184,8 +184,8 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     await startGame(page);
 
     await dispatchTouch(page, "plunger", "pointerdown", 51);
-    await page.clock.runFor(1_200);
-    expect((await readG1B(page)).prototype.launchCharge).toBeGreaterThanOrEqual(0.9);
+    await page.clock.runFor(1_250);
+    expect((await readG1B(page)).prototype.launchCharge).toBe(1);
     await dispatchTouch(page, "plunger", "pointerup", 51);
     await page.clock.runFor(34);
 
