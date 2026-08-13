@@ -215,7 +215,7 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     await expect(page.locator("[data-graybox='score']")).toHaveText("100");
     await expect(page.locator("[data-graybox='progress']")).toHaveText("1 / 5");
     await expect(page.locator("[data-graybox='target']")).toHaveText("右の中核ショット");
-    await expect(page.locator("[data-graybox='return']")).toHaveText("右の安全戻り");
+    await expect(page.locator("[data-graybox='return']")).toHaveText("左の安全戻り");
     expect((await readG1B(page)).prototype.runIntegrity).toBe("valid");
   });
 
