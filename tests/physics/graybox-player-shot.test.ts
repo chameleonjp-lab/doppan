@@ -25,7 +25,7 @@ interface PlayerReturnRun {
   readonly snapshot: GrayboxAlphaSnapshot;
   readonly returnFlipper: "left" | "right";
   readonly returnImpactCount: number;
-  readonly returnImpactVelocityY: number | null;
+  readonly maxReturnImpactVelocityY: number | null;
 }
 
 const FIXED_STEP_MS: Readonly<Record<PhysicsStepHz, number>> = {
@@ -135,7 +135,7 @@ function isReturnInputWindow(
   if (physicsStepHz === 60) {
     return x >= 5.85 && x <= 6.15 && y >= 1.6 && y <= 2.3 && velocityY < -4;
   }
-  return x >= 6.2 && x <= 6.6 && y >= 0.5 && y <= 1.35 && velocityY < -4;
+  return x >= 6.35 && x <= 6.85 && y >= 1.4 && y <= 2.1 && velocityY < -4;
 }
 
 function runPlayerShotToReturn(
@@ -146,7 +146,7 @@ function runPlayerShotToReturn(
   let returnInputPressed = false;
   let returnInputReleased = false;
   let returnImpactCount = 0;
-  let returnImpactVelocityY: number | null = null;
+  let maxReturnImpactVelocityY: number | null = null;
   let shotCompletedStep: number | null = null;
   let returnInputStep: number | null = null;
   const returnTapSteps = Math.max(1, Math.round(0.8 * physicsStepHz));
@@ -160,6 +160,11 @@ function runPlayerShotToReturn(
         (impact) => impact.fixtureId === `flipper-${returnFlipper}`,
       );
       returnImpactCount += impacts.length;
+      if (impacts.length > 0) {
+        const velocityY = alpha.snapshot().ball.linearVelocity.y;
+        maxReturnImpactVelocityY =
+          maxReturnImpactVelocityY === null ? velocityY : Math.max(maxReturnImpactVelocityY, velocityY);
+      }
     },
   });
   const stepMs = FIXED_STEP_MS[physicsStepHz];
@@ -217,9 +222,6 @@ function runPlayerShotToReturn(
       expect(alpha.input.pointerUp(3)).toBe(true);
       returnInputReleased = true;
     }
-    if (returnImpactVelocityY === null && returnImpactCount > 0) {
-      returnImpactVelocityY = after.ball.linearVelocity.y;
-    }
     const returnObservationEnd =
       (returnInputStep ?? Number.POSITIVE_INFINITY) +
       returnTapSteps +
@@ -238,7 +240,7 @@ function runPlayerShotToReturn(
     snapshot,
     returnFlipper,
     returnImpactCount,
-    returnImpactVelocityY,
+    maxReturnImpactVelocityY,
   };
 }
 
@@ -397,13 +399,13 @@ describe("graybox player-input safe shots", () => {
           returnFlipper: result.returnFlipper,
           completed: result.snapshot.graybox.completedShotIds,
           returnImpactCount: result.returnImpactCount,
-          returnImpactVelocityY: result.returnImpactVelocityY,
+          maxReturnImpactVelocityY: result.maxReturnImpactVelocityY,
           baseState: result.snapshot.baseState,
           ball: result.snapshot.ball,
         });
         expect(result.snapshot.graybox.completedShotIds, label).toContain(shotId);
         expect(result.returnImpactCount, label).toBeGreaterThanOrEqual(1);
-        expect(result.returnImpactVelocityY, label).not.toBeNull();
+        expect(result.maxReturnImpactVelocityY, label).toBeGreaterThan(0);
         expect(result.snapshot.baseState, label).toBe("Playing");
       }
     }

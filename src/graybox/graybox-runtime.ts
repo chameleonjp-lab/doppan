@@ -73,6 +73,8 @@ const GATE_BY_ROUTE: Readonly<Record<GrayboxReturnRouteId, string>> = {
   "climax-return": "gate-return-climax",
 };
 
+const R0_RETURN_CATCHER_GATE_ID = "gate-return-r0-catcher";
+
 const TARGET_LABEL: Readonly<Record<GrayboxTargetId, string>> = {
   L0: "左の安全ショット",
   R0: "右の安全ショット",
@@ -130,6 +132,11 @@ export class GrayboxRuntime {
 
   public initialize(world: PinballWorld): void {
     this.queueRouteChange(world, world.physicsStepId, "neutral-return");
+    world.enqueueCommand({
+      type: "openGate",
+      targetId: R0_RETURN_CATCHER_GATE_ID,
+      stepId: world.physicsStepId + 1,
+    });
   }
 
   public consume(step: PinballStepResult, world: PinballWorld): void {
@@ -234,16 +241,21 @@ export class GrayboxRuntime {
         targetId: nextGateId,
         stepId: physicsStepId + 1,
       });
-      return;
+    } else {
+      world.enqueueCommand({
+        type: "closeGate",
+        targetId: previousGateId,
+        stepId: physicsStepId + 1,
+      });
+      world.enqueueCommand({
+        type: "openGate",
+        targetId: nextGateId,
+        stepId: physicsStepId + 1,
+      });
     }
     world.enqueueCommand({
-      type: "closeGate",
-      targetId: previousGateId,
-      stepId: physicsStepId + 1,
-    });
-    world.enqueueCommand({
-      type: "openGate",
-      targetId: nextGateId,
+      type: nextGateId === "gate-return-right-safe" ? "closeGate" : "openGate",
+      targetId: R0_RETURN_CATCHER_GATE_ID,
       stepId: physicsStepId + 1,
     });
   }

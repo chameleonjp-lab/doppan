@@ -46,6 +46,7 @@ describe("G2 graybox table", () => {
     expect(table.fixtures.map((fixture) => fixture.id)).toEqual(
       expect.arrayContaining([
         "gate-return-neutral",
+        "gate-return-r0-catcher",
         "gate-return-left-safe",
         "gate-return-right-safe",
         "gate-return-central",
@@ -102,6 +103,7 @@ describe("GrayboxRuntime", () => {
       score: 0,
     });
     expect(world.tableRuntime.gateStates.get("gate-return-neutral")).toBe(true);
+    expect(world.tableRuntime.gateStates.get("gate-return-r0-catcher")).toBe(true);
 
     runtime.consume(shotCompleted("L0", world.physicsStepId), world);
     expect(runtime.snapshot(world)).toMatchObject({
@@ -114,6 +116,25 @@ describe("GrayboxRuntime", () => {
     world.step();
     expect(world.tableRuntime.gateStates.get("gate-return-neutral")).toBe(false);
     expect(world.tableRuntime.gateStates.get("gate-return-left-safe")).toBe(true);
+    expect(world.tableRuntime.gateStates.get("gate-return-r0-catcher")).toBe(true);
+    world.destroy();
+  });
+
+  it("closes the R0 catcher only for the right-safe return route", () => {
+    const world = new PinballWorld({ table: createGrayboxTableDefinition() });
+    const runtime = new GrayboxRuntime();
+    runtime.initialize(world);
+    world.step();
+
+    runtime.consume(shotCompleted("R0", world.physicsStepId), world);
+    expect(runtime.snapshot(world)).toMatchObject({
+      activeTargetIds: ["L1"],
+      returnRouteId: "right-safe-return",
+    });
+
+    world.step();
+    expect(world.tableRuntime.gateStates.get("gate-return-r0-catcher")).toBe(false);
+    expect(world.tableRuntime.gateStates.get("gate-return-right-safe")).toBe(true);
     world.destroy();
   });
 
