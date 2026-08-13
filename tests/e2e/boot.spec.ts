@@ -199,7 +199,9 @@ test.describe("G3 / GA vertical slice boot surface", () => {
       1_500,
     );
     await dispatchTouch(page, "rightFlipper", "pointerdown", 52);
-    await page.clock.runFor(100);
+    // Keep the control down across seven 60 Hz fixed steps. A nominal 100 ms
+    // clock window can straddle the queued pointer event and apply only five.
+    await page.clock.runFor(117);
     await dispatchTouch(page, "rightFlipper", "pointerup", 52);
 
     await runClockUntil(
