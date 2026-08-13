@@ -7,7 +7,7 @@ import type {
   TableShotDefinition,
 } from "./types";
 
-export const GRAYBOX_TABLE_VERSION = "graybox-alpha-1";
+export const GRAYBOX_TABLE_VERSION = "graybox-alpha-2";
 
 const point = (x: number, y: number): TablePoint => ({ x, y });
 
@@ -32,16 +32,42 @@ const fixture = (
   sensorId,
 });
 
+interface GrayboxShotPlacement {
+  readonly id: string;
+  readonly sensorPositions: readonly [TablePoint, TablePoint, TablePoint];
+  readonly expectedDirection: TablePoint;
+}
+
+const verticalSensorPositions = (
+  x: number,
+  y: number,
+): readonly [TablePoint, TablePoint, TablePoint] => [
+  point(x, y),
+  point(x, y + 0.72),
+  point(x, y + 1.44),
+];
+
 const grayboxShots = [
-  { id: "L0", x: 1.45, y: 5.05 },
-  { id: "R0", x: 7.55, y: 5.05 },
-  { id: "L1", x: 2.2, y: 8.05 },
-  { id: "R1", x: 6.8, y: 8.05 },
-  { id: "L2", x: 1.45, y: 11.05 },
-  { id: "R2", x: 7.55, y: 11.05 },
-  { id: "C0", x: 4.5, y: 10.0 },
-  { id: "C1", x: 4.5, y: 13.75 },
-] as const;
+  // The opening safe shots follow trajectories produced by the real right
+  // flipper.  L0 catches the fast leftward return after the divider rebound;
+  // R0 catches the higher, slower arc.  Neither path overlaps the launch lane.
+  {
+    id: "L0",
+    sensorPositions: [point(5.4, 2.85), point(3.9, 2.85), point(2.4, 2.85)],
+    expectedDirection: point(-1, 0.25),
+  },
+  {
+    id: "R0",
+    sensorPositions: [point(6.65, 1.8), point(6.65, 2.52), point(6.65, 3.24)],
+    expectedDirection: point(0, 1),
+  },
+  { id: "L1", sensorPositions: verticalSensorPositions(2.2, 8.05), expectedDirection: point(0, 1) },
+  { id: "R1", sensorPositions: verticalSensorPositions(6.8, 8.05), expectedDirection: point(0, 1) },
+  { id: "L2", sensorPositions: verticalSensorPositions(1.45, 11.05), expectedDirection: point(0, 1) },
+  { id: "R2", sensorPositions: verticalSensorPositions(7.55, 11.05), expectedDirection: point(0, 1) },
+  { id: "C0", sensorPositions: verticalSensorPositions(4.5, 10.0), expectedDirection: point(0, 1) },
+  { id: "C1", sensorPositions: verticalSensorPositions(4.5, 13.75), expectedDirection: point(0, 1) },
+] as const satisfies readonly GrayboxShotPlacement[];
 
 type GrayboxShotId = (typeof grayboxShots)[number]["id"];
 
@@ -62,17 +88,18 @@ const SHOT_PROFILES: Readonly<Record<GrayboxShotId, GrayboxShotProfile>> = {
   C1: { sensorWidth: 1.05, sensorHeight: 0.5, maxDurationSteps: 240 },
 };
 
-const shotSensors = grayboxShots.flatMap(({ id, x, y }) => {
+const shotSensors = grayboxShots.flatMap(({ id, sensorPositions }) => {
   const profile = SHOT_PROFILES[id];
   const entrySensorId = `${id}-entry`;
   const checkpointSensorId = `${id}-checkpoint`;
   const exitSensorId = `${id}-exit`;
+  const [entryPosition, checkpointPosition, exitPosition] = sensorPositions;
   const sensorRows: readonly TableSensorDefinition[] = [
     {
       id: entrySensorId,
       fixtureId: `sensor-${entrySensorId}`,
       purpose: "safe-shot",
-      position: point(x, y),
+      position: entryPosition,
       width: profile.sensorWidth,
       height: profile.sensorHeight,
     },
@@ -80,7 +107,7 @@ const shotSensors = grayboxShots.flatMap(({ id, x, y }) => {
       id: checkpointSensorId,
       fixtureId: `sensor-${checkpointSensorId}`,
       purpose: "safe-shot",
-      position: point(x, y + 0.72),
+      position: checkpointPosition,
       width: profile.sensorWidth,
       height: profile.sensorHeight,
     },
@@ -88,7 +115,7 @@ const shotSensors = grayboxShots.flatMap(({ id, x, y }) => {
       id: exitSensorId,
       fixtureId: `sensor-${exitSensorId}`,
       purpose: "safe-shot",
-      position: point(x, y + 1.44),
+      position: exitPosition,
       width: profile.sensorWidth,
       height: profile.sensorHeight,
     },
@@ -96,13 +123,13 @@ const shotSensors = grayboxShots.flatMap(({ id, x, y }) => {
   return sensorRows;
 });
 
-const shotDefinitions: readonly TableShotDefinition[] = grayboxShots.map(({ id }) => ({
+const shotDefinitions: readonly TableShotDefinition[] = grayboxShots.map(({ id, expectedDirection }) => ({
   id,
   entrySensorId: `${id}-entry`,
   checkpointSensorId: `${id}-checkpoint`,
   exitSensorId: `${id}-exit`,
   maxDurationSteps: SHOT_PROFILES[id].maxDurationSteps,
-  expectedDirection: point(0, 1),
+  expectedDirection,
 }));
 
 const gateFixtures: readonly TableFixtureDefinition[] = [

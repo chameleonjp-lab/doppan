@@ -33,6 +33,40 @@ async function waitForG1B(page: Page): Promise<void> {
     .toBe("webgl");
 }
 
+async function dispatchTouch(
+  page: Page,
+  action: "plunger" | "rightFlipper",
+  phase: "pointerdown" | "pointerup",
+  pointerId: number,
+): Promise<void> {
+  const button = page.locator(`[data-input-action='${action}']`);
+  await button.evaluate((element) => {
+    // Synthetic pointer events do not have a browser pointer capture slot.
+    element.setPointerCapture = () => undefined;
+  });
+  await button.dispatchEvent(phase, {
+    pointerId,
+    pointerType: "touch",
+    isPrimary: true,
+    buttons: phase === "pointerdown" ? 1 : 0,
+  });
+}
+
+async function runClockUntil(
+  page: Page,
+  predicate: (snapshot: Awaited<ReturnType<typeof readG1B>>["snapshot"]) => boolean,
+  timeoutMs: number,
+): Promise<Awaited<ReturnType<typeof readG1B>>> {
+  for (let elapsedMs = 0; elapsedMs < timeoutMs; elapsedMs += 17) {
+    await page.clock.runFor(17);
+    const observation = await readG1B(page);
+    if (predicate(observation.snapshot)) {
+      return observation;
+    }
+  }
+  throw new Error(`condition was not reached within ${timeoutMs} ms`);
+}
+
 function resourceCounts(observation: Awaited<ReturnType<typeof readG1B>>) {
   return {
     bodyCount: observation.prototype.physics.bodyCount,
@@ -140,6 +174,47 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     expect(routed.prototype.physics.safeStopped).toBe(false);
     expect(routed.prototype.inputLatency.inputToPhysics.sampleCount).toBeGreaterThan(0);
     expect(routed.prototype.inputLatency.inputToDraw.sampleCount).toBeGreaterThan(0);
+  });
+
+  test("turns touch launch and a visible flipper control into score and a changed route", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-08-11T00:00:00.000Z") });
+    await page.clock.pauseAt(new Date("2026-08-11T00:00:01.000Z"));
+    await page.goto("/");
+    await waitForG1B(page);
+    await startGame(page);
+
+    await dispatchTouch(page, "plunger", "pointerdown", 51);
+    await page.clock.runFor(1_200);
+    expect((await readG1B(page)).prototype.launchCharge).toBeGreaterThanOrEqual(0.9);
+    await dispatchTouch(page, "plunger", "pointerup", 51);
+    await page.clock.runFor(34);
+
+    await runClockUntil(
+      page,
+      (snapshot) =>
+        snapshot.ball.linearVelocity.y < 0 &&
+        snapshot.ball.position.x < 6.5 &&
+        snapshot.ball.position.y <= 3 &&
+        snapshot.ball.position.y > 1.5,
+      1_500,
+    );
+    await dispatchTouch(page, "rightFlipper", "pointerdown", 52);
+    await page.clock.runFor(100);
+    await dispatchTouch(page, "rightFlipper", "pointerup", 52);
+
+    await runClockUntil(
+      page,
+      (snapshot) => snapshot.graybox.score === 100,
+      1_500,
+    );
+    await page.clock.runFor(34);
+
+    expect((await readG1B(page)).snapshot.graybox.completedShotIds).toEqual(["L0"]);
+    await expect(page.locator("[data-graybox='score']")).toHaveText("100");
+    await expect(page.locator("[data-graybox='progress']")).toHaveText("1 / 5");
+    await expect(page.locator("[data-graybox='target']")).toHaveText("右の中核ショット");
+    await expect(page.locator("[data-graybox='return']")).toHaveText("右の安全戻り");
+    expect((await readG1B(page)).prototype.runIntegrity).toBe("valid");
   });
 
   test("routes keyboard and touch input, including release", async ({ page }) => {
@@ -366,15 +441,29 @@ test.describe("G3 / GA vertical slice boot surface", () => {
   });
 
   for (const width of [320, 390, 430]) {
-    test(`fits ${width}px portrait width without horizontal overflow`, async ({ page }) => {
+    test(`fits ${width}px portrait width without overflow or hidden playfield`, async ({ page }) => {
       await page.setViewportSize({ width, height: 720 });
       await page.goto("/");
       await waitForG1B(page);
-      const dimensions = await page.evaluate(() => ({
-        clientWidth: document.documentElement.clientWidth,
-        scrollWidth: document.documentElement.scrollWidth,
-      }));
+      const dimensions = await page.evaluate(() => {
+        const canvas = document.querySelector<HTMLElement>("[data-canvas-host]");
+        const controls = document.querySelector<HTMLElement>(".game-stage .input-panel");
+        if (canvas === null || controls === null) {
+          throw new Error("playfield or controls are missing");
+        }
+        const canvasBox = canvas.getBoundingClientRect();
+        const controlsBox = controls.getBoundingClientRect();
+        return {
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          canvasBottom: canvasBox.bottom,
+          controlsTop: controlsBox.top,
+          canvasHeight: canvasBox.height,
+        };
+      });
       expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+      expect(dimensions.canvasBottom).toBeLessThanOrEqual(dimensions.controlsTop);
+      expect(dimensions.canvasHeight).toBeGreaterThanOrEqual(470);
     });
   }
 
