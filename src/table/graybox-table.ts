@@ -134,6 +134,10 @@ const shotDefinitions: readonly TableShotDefinition[] = grayboxShots.map(({ id, 
 
 const gateFixtures: readonly TableFixtureDefinition[] = [
   fixture("gate-return-neutral", "lane", "body-gate-return-neutral", 4.5, 3.45, 2.4, 0.18),
+  // This gate is opened on the neutral/left routes and closed only after R0.
+  // Closing it gives the right-side return a shallow catcher without changing
+  // the launch-only path.
+  fixture("gate-return-r0-catcher", "lane", "body-gate-return-r0-catcher", 6.5, 1.3, 0.75, 0.1, null, -0.5),
   fixture("gate-return-left-safe", "lane", "body-gate-return-left-safe", 3.0, 6.55, 1.65, 0.18),
   fixture("gate-return-right-safe", "lane", "body-gate-return-right-safe", 6.0, 6.55, 1.65, 0.18),
   fixture("gate-return-left-cross", "lane", "body-gate-return-left-cross", 2.55, 9.45, 1.9, 0.18, null, 0.18),
