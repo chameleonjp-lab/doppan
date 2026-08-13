@@ -106,14 +106,14 @@ describe("GrayboxRuntime", () => {
     runtime.consume(shotCompleted("L0", world.physicsStepId), world);
     expect(runtime.snapshot(world)).toMatchObject({
       activeTargetIds: ["R1"],
-      returnRouteId: "right-safe-return",
+      returnRouteId: "left-safe-return",
       score: 100,
       progress: 1 / 5,
     });
 
     world.step();
     expect(world.tableRuntime.gateStates.get("gate-return-neutral")).toBe(false);
-    expect(world.tableRuntime.gateStates.get("gate-return-right-safe")).toBe(true);
+    expect(world.tableRuntime.gateStates.get("gate-return-left-safe")).toBe(true);
     world.destroy();
   });
 

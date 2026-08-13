@@ -21,6 +21,13 @@ interface PlayerShotOptions {
   readonly maxDurationSeconds?: number;
 }
 
+interface PlayerReturnRun {
+  readonly snapshot: GrayboxAlphaSnapshot;
+  readonly returnFlipper: "left" | "right";
+  readonly returnImpactCount: number;
+  readonly returnImpactVelocityY: number | null;
+}
+
 const FIXED_STEP_MS: Readonly<Record<PhysicsStepHz, number>> = {
   60: 1000 / 60,
   120: 1000 / 120,
@@ -107,6 +114,131 @@ function runPlayerShot(options: PlayerShotOptions): PlayerShotRun {
     triggerWasReached,
     pressedAtStep,
     tapDurationSteps,
+  };
+}
+
+function isReturnInputWindow(
+  snapshot: GrayboxAlphaSnapshot,
+  physicsStepHz: PhysicsStepHz,
+  shotId: OpeningShotId,
+): boolean {
+  const { x, y } = snapshot.ball.position;
+  const { y: velocityY } = snapshot.ball.linearVelocity;
+  if (shotId === "L0") {
+    // L0 traverses the lower-left lane immediately after completion. Holding
+    // the matching flipper from that event exercises the real return path
+    // without depending on a wall-clock sleep.
+    return true;
+  }
+  // R0 reaches the right lower lane at different positions for each fixed
+  // step rate; use deterministic position/velocity bands instead of timing.
+  if (physicsStepHz === 60) {
+    return x >= 5.85 && x <= 6.15 && y >= 1.6 && y <= 2.3 && velocityY < -4;
+  }
+  return x >= 6.2 && x <= 6.6 && y >= 0.5 && y <= 1.35 && velocityY < -4;
+}
+
+function runPlayerShotToReturn(
+  physicsStepHz: PhysicsStepHz,
+  shotId: OpeningShotId,
+): PlayerReturnRun {
+  const returnFlipper = shotId === "L0" ? "left" : "right";
+  let returnInputPressed = false;
+  let returnInputReleased = false;
+  let returnImpactCount = 0;
+  let returnImpactVelocityY: number | null = null;
+  let shotCompletedStep: number | null = null;
+  let returnInputStep: number | null = null;
+  const returnTapSteps = Math.max(1, Math.round(0.8 * physicsStepHz));
+  const alpha = new GrayboxAlpha({
+    physicsStepHz,
+    onPhysicsStep: (result) => {
+      if (!returnInputPressed) {
+        return;
+      }
+      const impacts = result.impacts.filter(
+        (impact) => impact.fixtureId === `flipper-${returnFlipper}`,
+      );
+      returnImpactCount += impacts.length;
+    },
+  });
+  const stepMs = FIXED_STEP_MS[physicsStepHz];
+  const triggerY = shotId === "L0" ? 3 : 2.4;
+  const tapDurationMs = shotId === "L0" ? 100 : 83;
+  const tapDurationSteps = Math.max(1, Math.round((tapDurationMs * physicsStepHz) / 1000));
+  let initialPressedAt: number | null = null;
+  let initialReleased = false;
+  launchWithPlayerInput(alpha, physicsStepHz);
+
+  for (let step = 0; step < physicsStepHz * 12; step += 1) {
+    const before = alpha.snapshot();
+    if (
+      initialPressedAt === null &&
+      before.ball.linearVelocity.y < 0 &&
+      before.ball.position.x < 6.5 &&
+      before.ball.position.y <= triggerY &&
+      before.ball.position.y > 1.5
+    ) {
+      initialPressedAt = step;
+      expect(alpha.input.pointerDown(2, "rightFlipper")).toBe(true);
+    }
+    if (
+      initialPressedAt !== null &&
+      !initialReleased &&
+      step >= initialPressedAt + tapDurationSteps
+    ) {
+      expect(alpha.input.pointerUp(2)).toBe(true);
+      initialReleased = true;
+    }
+
+    alpha.advance(stepMs);
+    const after = alpha.snapshot();
+    if (
+      shotCompletedStep === null &&
+      after.graybox.completedShotIds.includes(shotId)
+    ) {
+      shotCompletedStep = after.physicsStepId;
+    }
+    if (
+      shotCompletedStep !== null &&
+      !returnInputPressed &&
+      isReturnInputWindow(after, physicsStepHz, shotId)
+    ) {
+      expect(alpha.input.pointerDown(3, `${returnFlipper}Flipper`)).toBe(true);
+      returnInputPressed = true;
+      returnInputStep = after.physicsStepId;
+    }
+    if (
+      returnInputPressed &&
+      !returnInputReleased &&
+      returnInputStep !== null &&
+      after.physicsStepId >= returnInputStep + returnTapSteps
+    ) {
+      expect(alpha.input.pointerUp(3)).toBe(true);
+      returnInputReleased = true;
+    }
+    if (returnImpactVelocityY === null && returnImpactCount > 0) {
+      returnImpactVelocityY = after.ball.linearVelocity.y;
+    }
+    const returnObservationEnd =
+      (returnInputStep ?? Number.POSITIVE_INFINITY) +
+      returnTapSteps +
+      Math.max(1, Math.round(0.25 * physicsStepHz));
+    if (returnInputReleased && after.physicsStepId >= returnObservationEnd) {
+      break;
+    }
+    if (after.baseState === "BallEnding") {
+      break;
+    }
+  }
+
+  const snapshot = alpha.snapshot();
+  alpha.destroy();
+  return {
+    snapshot,
+    returnFlipper,
+    returnImpactCount,
+    returnImpactVelocityY,
   };
 }
 
@@ -202,11 +334,11 @@ describe("graybox player-input safe shots", () => {
     expect(leftRoute.snapshot.graybox).toMatchObject({
       completedShotIds: ["L0"],
       activeTargetIds: ["R1"],
-      returnRouteId: "right-safe-return",
+      returnRouteId: "left-safe-return",
       score: 100,
       progress: 1 / 5,
     });
-    expect(leftRoute.snapshot.graybox.gateStates["gate-return-right-safe"]).toBe(true);
+    expect(leftRoute.snapshot.graybox.gateStates["gate-return-left-safe"]).toBe(true);
     expect(leftRoute.snapshot.graybox.gateStates["gate-return-neutral"]).toBe(false);
 
     const rightRoute = runPlayerShot({
@@ -217,11 +349,11 @@ describe("graybox player-input safe shots", () => {
     expect(rightRoute.snapshot.graybox).toMatchObject({
       completedShotIds: ["R0"],
       activeTargetIds: ["L1"],
-      returnRouteId: "left-safe-return",
+      returnRouteId: "right-safe-return",
       score: 100,
       progress: 1 / 5,
     });
-    expect(rightRoute.snapshot.graybox.gateStates["gate-return-left-safe"]).toBe(true);
+    expect(rightRoute.snapshot.graybox.gateStates["gate-return-right-safe"]).toBe(true);
     expect(rightRoute.snapshot.graybox.gateStates["gate-return-neutral"]).toBe(false);
   });
 
@@ -252,6 +384,28 @@ describe("graybox player-input safe shots", () => {
         score: 0,
         progress: 0,
       });
+    }
+  });
+
+  it("returns the completed opening shot to the matching next flipper at both fixed-step rates", () => {
+    for (const physicsStepHz of [60, 120] as const) {
+      for (const shotId of ["L0", "R0"] as const) {
+        const result = runPlayerShotToReturn(physicsStepHz, shotId);
+        const label = JSON.stringify({
+          physicsStepHz,
+          shotId,
+          returnFlipper: result.returnFlipper,
+          completed: result.snapshot.graybox.completedShotIds,
+          returnImpactCount: result.returnImpactCount,
+          returnImpactVelocityY: result.returnImpactVelocityY,
+          baseState: result.snapshot.baseState,
+          ball: result.snapshot.ball,
+        });
+        expect(result.snapshot.graybox.completedShotIds, label).toContain(shotId);
+        expect(result.returnImpactCount, label).toBeGreaterThanOrEqual(1);
+        expect(result.returnImpactVelocityY, label).not.toBeNull();
+        expect(result.snapshot.baseState, label).toBe("Playing");
+      }
     }
   });
 });

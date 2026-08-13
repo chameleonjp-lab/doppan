@@ -52,8 +52,8 @@ const SCORE_VALUES: Readonly<Record<GrayboxTargetId, number>> = {
 };
 
 const ROUTE_BY_TARGET: Readonly<Record<GrayboxTargetId, GrayboxReturnRouteId>> = {
-  L0: "right-safe-return",
-  R0: "left-safe-return",
+  L0: "left-safe-return",
+  R0: "right-safe-return",
   L1: "right-cross-return",
   R1: "left-cross-return",
   L2: "short-return",
