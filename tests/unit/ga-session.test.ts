@@ -1,26 +1,42 @@
 import { describe, expect, it } from "vitest";
 import { GaSession } from "../../src/game";
 
-function startBall(session: GaSession): void {
+function startBall(session: GaSession, chargeSteps = 1): void {
   expect(session.input.keyboardDown({ code: "Space", action: "plunger", receivedAtMs: 0 })).toBe(true);
-  session.advance(1000 / 60);
+  for (let step = 0; step < chargeSteps; step += 1) {
+    session.advance(1000 / 60);
+  }
   expect(session.input.keyboardUp("Space", 1)).toBe(true);
   session.advance(1000 / 60);
   expect(session.snapshot().phase).toBe("playing");
 }
 
 function completeL0(session: GaSession): void {
-  for (const sensorId of ["L0-entry", "L0-checkpoint", "L0-exit"]) {
-    const sensor = session.world.table.sensors.find((candidate) => candidate.id === sensorId);
-    if (sensor === undefined) {
-      throw new Error(`missing sensor ${sensorId}`);
+  let pressedAtStep: number | null = null;
+  let released = false;
+  for (let step = 0; step < 240; step += 1) {
+    const before = session.snapshot();
+    if (
+      pressedAtStep === null &&
+      before.ball.linearVelocity.y < 0 &&
+      before.ball.position.x < 6.5 &&
+      before.ball.position.y <= 3 &&
+      before.ball.position.y > 1.5
+    ) {
+      pressedAtStep = step;
+      expect(session.input.keyboardDown({ code: "Slash", action: "rightFlipper" })).toBe(true);
     }
-    session.world.ballBody.setTransform({ x: sensor.position.x, y: sensor.position.y - 0.35 }, 0);
-    session.world.ballBody.setLinearVelocity({ x: 0, y: 6 });
+    if (pressedAtStep !== null && !released && step >= pressedAtStep + 6) {
+      expect(session.input.keyboardUp("Slash")).toBe(true);
+      released = true;
+    }
     session.advance(1000 / 60);
-    session.advance(1000 / 60);
+    if (session.snapshot().graybox.completedShotIds.includes("L0")) {
+      session.advance(1000 / 60);
+      return;
+    }
   }
-  session.advance(1000 / 60);
+  throw new Error("L0 did not complete from player input");
 }
 
 function drainBall(session: GaSession): void {
@@ -57,7 +73,7 @@ describe("GaSession", () => {
       result: null,
     });
 
-    startBall(session);
+    startBall(session, 72);
     completeL0(session);
     expect(session.snapshot().graybox).toMatchObject({ score: 100, progress: 1 / 5, combo: 1 });
 

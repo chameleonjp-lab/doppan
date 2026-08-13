@@ -721,15 +721,17 @@ summary:focus-visible {
 }
 
 .game-stage {
+  --game-controls-reserve: 160px;
+
   position: relative;
   width: 100%;
-  height: clamp(500px, calc(100svh - 220px), 720px);
+  height: clamp(660px, calc(100svh - 60px), 880px);
   isolation: isolate;
 }
 
 .game-stage .canvas-host {
   position: absolute;
-  inset: 0;
+  inset: 0 0 var(--game-controls-reserve);
   width: 100%;
   max-width: none;
   aspect-ratio: auto;
@@ -891,7 +893,7 @@ summary:focus-visible {
   }
 
   .game-stage {
-    height: clamp(470px, calc(100svh - 230px), 650px);
+    height: clamp(630px, calc(100svh - 70px), 810px);
   }
 }
 
@@ -908,8 +910,8 @@ summary:focus-visible {
 @media (orientation: landscape) and (max-height: 640px) {
   .game-stage {
     width: min(100%, 440px);
-    height: calc(100svh - 116px);
-    min-height: 300px;
-    max-height: 540px;
+    height: calc(100svh + 44px);
+    min-height: 460px;
+    max-height: 700px;
   }
 }
