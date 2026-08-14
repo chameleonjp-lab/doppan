@@ -270,7 +270,7 @@ PR #11でG3 / GAの技術縦切りはマージ済みだが、2026-08-12の公開
 
 ルートでゲームが直接起動する状態や、未変換の`src/main.ts`を配信する状態は、実装コードが動いて見えても採用しない。
 
-2026-08-14の実URL確認では、この不合格状態が継続していた。ルートは旧ゲーム画面、`/_preview/current/`と`robots.txt`は404である。PR #20のマージ後に`main`を指定した手動workflowが実行されるまで、Pages実配置と人手試遊を完了扱いにしない。
+2026-08-14 01:25 UTCの再確認では、Pages APIが`legacy / main`となり、main SHA `9ef086e`の動的Pages配置が成功した。ルートはmainのゲーム画面を直接返し、`/_preview/current/`と`robots.txt`は404である。これはルート案内と検査済み成果物を分ける構成ではないため、GitHub PagesのSourceを`GitHub Actions`へ手動設定し、`Development preview`を`main`で実行するまで、Pages実配置と人手試遊を完了扱いにしない。
 
 ---
 

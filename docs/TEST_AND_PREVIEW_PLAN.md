@@ -193,7 +193,7 @@ mainへワークフローを取り込んだ後:
 
 外部フォークでは実行しない。
 
-2026-08-12に公開URLを確認した結果、ルートが`/src/main.ts`を直接配信して「初期化中」のまま停止した。この状態はブラウザ試験の成功とは別のPages配信不備である。さらに2026-08-14の確認では、ルートが旧G3 / GAゲーム画面を返し、`/_preview/current/`と`robots.txt`が404だった。PagesのSourceをActionsへ設定し、mainの検査済み`dist`を`/_preview/current/`へ配置してから、実URLの確認を行う。
+2026-08-12に公開URLを確認した結果、ルートが`/src/main.ts`を直接配信して「初期化中」のまま停止した。この状態はブラウザ試験の成功とは別のPages配信不備である。さらに2026-08-14 01:25 UTCの確認では、Pages APIが`legacy / main`となり、main SHA `9ef086e`の動的Pages配置が成功したものの、ルートがmainのゲーム画面を直接返し、`/_preview/current/`と`robots.txt`が404だった。PagesのSourceを`GitHub Actions`へ設定し、mainの検査済み`dist`を`/_preview/current/`へ配置してから、実URLの確認を行う。
 
 ### 4.5 `production-deploy.yml`
 

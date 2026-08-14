@@ -181,7 +181,7 @@ G3 / GAの技術縦切りPR #11はマージ済みである。確認ページへ�
 - `refs/pull/*`とallowlist外のrefは拒否する
 - ルート、プレビューの起動、ビルドSHA、`robots.txt`を実URLで確認する
 
-2026-08-12の公開URL確認では、ルートが`/src/main.ts`を直接配信し、画面が初期化中のまま停止した。この状態をG3 / GAの公開確認合格とは扱わない。PagesのSourceをActionsへ設定し、検査済み成果物を配置した後に再確認する。
+2026-08-12に公開URLを確認した結果、ルートが`/src/main.ts`を直接配信し、画面が初期化中のまま停止した。この状態をG3 / GAの公開確認合格とは扱わない。2026-08-14 01:25 UTCにはPages APIが`legacy / main`となり、mainのゲーム画面がルートへ直接配信され、`/_preview/current/`と`robots.txt`が404だった。PagesのSourceを`GitHub Actions`へ設定し、検査済み成果物を配置した後に再確認する。
 
 ### 5.2 `main`
 
