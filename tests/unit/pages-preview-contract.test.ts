@@ -37,6 +37,14 @@ describe("GitHub Pages development preview contract", () => {
     expect(workflow).toMatch(/uses: actions\/deploy-pages@[0-9a-f]{40}/);
   });
 
+  it("fails a manual preview when Pages deployment is disabled", () => {
+    expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
+    expect(workflow).toContain("vars.DEVELOPMENT_PREVIEW_ENABLED != 'true'");
+    expect(workflow).toContain("require preview deployment enablement");
+    expect(workflow).toContain("DEVELOPMENT_PREVIEW_ENABLED=true");
+    expect(workflow).toContain("exit 1");
+  });
+
   it("keeps the root guide non-interactive and asks crawlers not to index it", () => {
     expect(rootGuide).toContain("一般公開前");
     expect(rootGuide).not.toContain("<script");

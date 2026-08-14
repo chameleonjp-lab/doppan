@@ -2,8 +2,8 @@
 
 - 文書種別: 重要決定・検証仕様・未決定事項
 - 作成日: 2026-08-09
-- 最終更新日: 2026-08-12
-- 版: 1.8
+- 最終更新日: 2026-08-15
+- 版: 1.9
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 
 ## 1. 運用方法
@@ -657,3 +657,15 @@
 6. RCで対応端末と名称・規約を最終確認する
 
 最新状態は[制作状況](./PRODUCTION_STATUS.md)を正本とする。
+
+
+### D-061 手動Pages previewの公開ゲートを失敗扱いにする
+
+- 状態: 決定
+- 確認日: 2026-08-15
+- 背景: Development preview Run #15は検査ジョブが成功した一方、`DEVELOPMENT_PREVIEW_ENABLED`未設定によりpublish jobがskipとなり、workflow全体が成功表示だった
+- 決定: `workflow_dispatch`かつ公開変数が`true`でない場合は、専用ゲートを失敗させる。変数が`true`のときだけpublish jobへ進む
+- 理由: ビルド成功と実URL配信成功を分け、未配置の確認URLを合格扱いにしないため
+- 影響: 手動実行前に`DEVELOPMENT_PREVIEW_ENABLED=true`が必要。pushによる信頼済みブランチの検証挙動は変更しない
+- 見直す条件: Pages Source、Environment保護、公開変数をユーザー本人が確認し、実URLでルート案内・`/_preview/current/`・`robots.txt`を確認できた時点
+- 承認者: ユーザー本人（設定・公開判断）

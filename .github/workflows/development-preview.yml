@@ -129,6 +129,21 @@ jobs:
           path: dist
           if-no-files-found: error
 
+
+  deploy_gate:
+    if: >-
+      github.repository == 'chameleonjp-lab/doppan' &&
+      github.event_name == 'workflow_dispatch' &&
+      vars.DEVELOPMENT_PREVIEW_ENABLED != 'true'
+    needs: build
+    name: require preview deployment enablement
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain disabled deployment
+        run: |
+          echo "::error title=Development preview is disabled::Set repository variable DEVELOPMENT_PREVIEW_ENABLED=true before rerunning this workflow."
+          exit 1
+
   deploy:
     if: >-
       github.repository == 'chameleonjp-lab/doppan' &&
