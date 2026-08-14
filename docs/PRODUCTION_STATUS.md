@@ -94,6 +94,8 @@ G0.5は調査成果物を完了した。G2仮図形はPR #10、G3 / GAの3球縦
 5. G1-Aマージ後の確認ページ終了処理を確認していない
 6. iPhone Safariの表示、保存、二本指、体感遅延、発熱はGA開始時にまとめて確認する
 
+2026-08-14の読み取り確認では、Pagesのルートは`2026-08-11`更新の旧G3 / GAゲーム画面を返し、`/_preview/current/`と`robots.txt`は404だった。Pages APIのSourceも旧`agent/ga-clarity-pages-sync`を示しており、`main`を対象にした`Development preview`の手動実行記録は確認できなかった。したがって、PR #20のマージだけではPages確認完了とは扱わず、GitHub側の手動workflow実行後に再確認する。
+
 これらはG3 / GAの技術縦切りを取り消すものではない。Pagesの設定・手動配置確認が終わるまで、公開確認とGAの人手試遊は開始しない。
 
 ### G1-B

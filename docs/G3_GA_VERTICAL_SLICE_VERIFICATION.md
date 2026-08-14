@@ -63,6 +63,8 @@ PR #11 / GitHub Actions Run #24では次を確認した。
 - ref: 同一リポジトリの`main`（手動workflowの既定値）
 - 判定: ルート案内、WebGL起動、3球状態、結果、再挑戦、ビルドSHA、検索除外
 
+2026-08-14の読み取り確認では、実URLのルートが`2026-08-11`更新の旧G3 / GAゲーム画面を返し、`/_preview/current/`と`robots.txt`は404だった。Pages APIのSourceも旧`agent/ga-clarity-pages-sync`を示しているため、PR #20のマージ後も手動配置は未完了である。`main`を指定した`Development preview`のworkflow実行後に、同じ判定項目を再確認する。
+
 ### 4.2 GA理解性パスの統合候補
 
 PR #12で検証した理解性パスを、PR #13で確定したPages配信境界を保った統合候補へ取り込む。

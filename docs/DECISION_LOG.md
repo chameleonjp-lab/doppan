@@ -605,6 +605,18 @@
 - 理由: Pagesの実配置が古い統合候補refのままだと、PR #19を含む最新mainの検査結果と実URLの内容が一致しないため
 - 次の確認: PagesのSource、`github-pages` Environment、`DEVELOPMENT_PREVIEW_ENABLED=true`をGitHub側で確認し、mainを手動配置する
 
+### D-059 Pages実配置は手動workflow後に判定する
+
+- 状態: 未完了
+- 確認日: 2026-08-14
+- 確認結果:
+  - Pagesのルートは`2026-08-11`更新の旧G3 / GAゲーム画面を返した
+  - `/_preview/current/`と`robots.txt`は404だった
+  - Pages APIのSourceは旧`agent/ga-clarity-pages-sync`を示した
+  - `main`を対象にした`Development preview`の手動実行記録は確認できなかった
+- 判定: PR #20のマージだけではPages確認完了としない。`main`を指定した手動workflowが成功し、ルート案内・プレビュー・ビルドSHA・検索除外を実URLで確認できるまで、G3 / GAのPages工程と人手試遊を保留する
+- 次の確認: GitHub側でPagesのSource、`github-pages` Environment、`DEVELOPMENT_PREVIEW_ENABLED=true`を確認し、`Development preview`を`main`で実行する
+
 ---
 
 ## 10. 未決定事項
