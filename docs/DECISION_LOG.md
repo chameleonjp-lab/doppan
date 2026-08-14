@@ -615,7 +615,18 @@
   - Pages APIのSourceは旧`agent/ga-clarity-pages-sync`を示した
   - `main`を対象にした`Development preview`の手動実行記録は確認できなかった
 - 判定: PR #20のマージだけではPages確認完了としない。`main`を指定した手動workflowが成功し、ルート案内・プレビュー・ビルドSHA・検索除外を実URLで確認できるまで、G3 / GAのPages工程と人手試遊を保留する
-- 次の確認: GitHub側でPagesのSource、`github-pages` Environment、`DEVELOPMENT_PREVIEW_ENABLED=true`を確認し、`Development preview`を`main`で実行する
+- 次の確認: GitHub側でPagesのSourceを`GitHub Actions`へ設定し、`github-pages` Environment、`DEVELOPMENT_PREVIEW_ENABLED=true`を確認したうえで、`Development preview`を`main`で実行する
+
+### D-060 Pages Sourceがlegacy / mainへ戻った状態
+
+- 状態: 未完了・P1相当
+- 確認日: 2026-08-14
+- 確認結果:
+  - PR #21マージ後、Pages APIは`build_type: legacy`、Sourceは`main`を返した
+  - main SHA `9ef086e`に対する動的Pages build and deploymentは成功した
+  - 公開ルートはmainのゲーム画面を返し、`/_preview/current/`と`robots.txt`は404だった
+- 判定: GitHub PagesのSourceが`GitHub Actions`ではないため、予定した検査済み成果物の分離配置が機能していない。G3 / GAのPages工程、人手試遊、正式公開は停止する
+- 次の確認: ユーザー本人がGitHub Settings → PagesでSourceを`GitHub Actions`へ変更し、`github-pages` Environmentと`DEVELOPMENT_PREVIEW_ENABLED=true`を確認してから、`Development preview`を`main`で手動実行する
 
 ---
 

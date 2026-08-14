@@ -63,7 +63,7 @@ PR #11 / GitHub Actions Run #24では次を確認した。
 - ref: 同一リポジトリの`main`（手動workflowの既定値）
 - 判定: ルート案内、WebGL起動、3球状態、結果、再挑戦、ビルドSHA、検索除外
 
-2026-08-14の読み取り確認では、実URLのルートが`2026-08-11`更新の旧G3 / GAゲーム画面を返し、`/_preview/current/`と`robots.txt`は404だった。Pages APIのSourceも旧`agent/ga-clarity-pages-sync`を示しているため、PR #20のマージ後も手動配置は未完了である。`main`を指定した`Development preview`のworkflow実行後に、同じ判定項目を再確認する。
+2026-08-14 01:25 UTCの再確認では、PR #21マージ後のPages APIが`legacy / main`となり、main SHA `9ef086e`の動的Pages配置が成功した。公開ルートはmainのゲーム画面を返す一方、`/_preview/current/`と`robots.txt`は404である。予定していたGitHub Actionsの確認ページ構成ではないため、Pages Sourceを`GitHub Actions`へ手動設定して`Development preview`を`main`で実行した後、ルート案内・ゲーム・ビルドSHA・検索除外を再確認する。
 
 ### 4.2 GA理解性パスの統合候補
 
