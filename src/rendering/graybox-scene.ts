@@ -19,9 +19,19 @@ const COLOR = {
   completed: 0x8292ae,
   gateOpen: 0x79e2c2,
   gateClosed: 0xe37979,
+  playerRail: 0x38526f,
+  playerRoute: 0x79e2c2,
+  playerTarget: 0xffdf76,
+  playerTargetEdge: 0xfff4c2,
 } as const;
 
 const TARGET_IDS = ["L0", "R0", "L1", "R1", "L2", "R2", "C0", "C1"] as const;
+
+export type GrayboxSceneMode = "player" | "diagnostic";
+
+export interface GrayboxSceneOptions {
+  readonly mode?: GrayboxSceneMode;
+}
 
 export interface GrayboxScene {
   readonly container: Container;
@@ -74,7 +84,38 @@ function centeredRotatedRectangle(
   ];
 }
 
-function drawTargetMarker(graphics: Graphics, center: Point, size: number): void {
+function drawCenteredRectangle(
+  graphics: Graphics,
+  viewport: PhysicsViewport,
+  center: Point,
+  width: number,
+  height: number,
+  angle: number,
+  color: number,
+  alpha: number,
+): void {
+  if (Math.abs(angle) > 1e-9) {
+    const corners = centeredRotatedRectangle(center, width, height, angle).map((point) =>
+      viewport.worldToScreen(point),
+    );
+    graphics.moveTo(corners[0]?.x ?? 0, corners[0]?.y ?? 0);
+    for (const corner of corners.slice(1)) {
+      graphics.lineTo(corner.x, corner.y);
+    }
+    graphics.closePath().fill({ color, alpha });
+    return;
+  }
+
+  const topLeft = viewport.worldToScreen({
+    x: center.x - width / 2,
+    y: center.y + height / 2,
+  });
+  graphics
+    .rect(topLeft.x, topLeft.y, width * viewport.scale, height * viewport.scale)
+    .fill({ color, alpha });
+}
+
+function drawDiagnosticTargetMarker(graphics: Graphics, center: Point, size: number): void {
   const radius = Math.max(8, size * 0.9);
   graphics
     .circle(center.x, center.y, radius)
@@ -87,6 +128,28 @@ function drawTargetMarker(graphics: Graphics, center: Point, size: number): void
     .fill({ color: COLOR.target, alpha: 0.92 });
 }
 
+function drawPlayerTargetMarker(
+  graphics: Graphics,
+  center: Point,
+  width: number,
+  height: number,
+): void {
+  const markerWidth = Math.max(30, Math.min(48, width * 1.25));
+  const markerHeight = Math.max(16, Math.min(24, height * 1.5));
+  const left = center.x - markerWidth / 2;
+  const top = center.y - markerHeight / 2;
+  graphics
+    .roundRect(left, top, markerWidth, markerHeight, Math.min(8, markerHeight / 2))
+    .fill({ color: COLOR.playerTarget, alpha: 0.32 })
+    .stroke({ color: COLOR.playerTargetEdge, width: 2.2, alpha: 0.98 });
+  graphics
+    .moveTo(center.x, top - 7)
+    .lineTo(center.x - 6, top)
+    .lineTo(center.x + 6, top)
+    .closePath()
+    .fill({ color: COLOR.playerTarget, alpha: 0.98 });
+}
+
 function targetIdFromSensor(sensorId: string): (typeof TARGET_IDS)[number] | null {
   const prefix = sensorId.split("-", 1)[0];
   return TARGET_IDS.includes(prefix as (typeof TARGET_IDS)[number])
@@ -94,8 +157,182 @@ function targetIdFromSensor(sensorId: string): (typeof TARGET_IDS)[number] | nul
     : null;
 }
 
-/** Draws the G2 graybox as a readable route-and-target experiment. */
-export function createGrayboxScene(): GrayboxScene {
+function drawFlippersAndBall(
+  graphics: Graphics,
+  viewport: PhysicsViewport,
+  snapshot: GrayboxAlphaSnapshot,
+): void {
+  for (const flipper of snapshot.flippers) {
+    const corners = rotatedRectangle(
+      flipper.position,
+      flipper.angle,
+      flipper.length,
+      flipper.thickness,
+    ).map((point) => viewport.worldToScreen(point));
+    graphics.moveTo(corners[0]?.x ?? 0, corners[0]?.y ?? 0);
+    for (const corner of corners.slice(1)) {
+      graphics.lineTo(corner.x, corner.y);
+    }
+    graphics
+      .closePath()
+      .fill({ color: flipper.active ? COLOR.activeFlipper : COLOR.idleFlipper, alpha: 0.98 })
+      .stroke({ color: COLOR.board, width: 1.5, alpha: 0.9 });
+  }
+
+  const ball = viewport.worldToScreen(snapshot.ball.position);
+  graphics
+    .circle(ball.x, ball.y, snapshot.ball.radius * viewport.scale)
+    .fill({ color: COLOR.ball, alpha: 1 })
+    .stroke({ color: COLOR.ballEdge, width: 1.5, alpha: 1 });
+}
+
+function drawDiagnosticGeometry(
+  graphics: Graphics,
+  viewport: PhysicsViewport,
+  snapshot: GrayboxAlphaSnapshot,
+): void {
+  const activeTargets = new Set(snapshot.graybox.activeTargetIds);
+  const completedTargets = new Set(snapshot.graybox.completedShotIds);
+
+  for (const fixture of snapshot.staticGeometry) {
+    const isGate = fixture.id.startsWith("gate-return-");
+    const gateOpen = snapshot.graybox.gateStates[fixture.id] === true;
+    const fillColor = isGate
+      ? gateOpen
+        ? COLOR.gateOpen
+        : COLOR.gateClosed
+      : fixture.kind === "wall"
+        ? COLOR.wall
+        : fixture.kind === "lane"
+          ? COLOR.lane
+          : COLOR.floor;
+    const alpha = isGate ? (gateOpen ? 0.78 : 0.9) : fixture.kind === "lane" ? 0.72 : 0.92;
+    drawCenteredRectangle(
+      graphics,
+      viewport,
+      fixture.position,
+      fixture.width,
+      fixture.height,
+      fixture.angle,
+      fillColor,
+      alpha,
+    );
+  }
+
+  for (const sensor of snapshot.sensors) {
+    const targetId = targetIdFromSensor(sensor.id);
+    const isActive = targetId !== null && activeTargets.has(targetId);
+    const isCompleted = targetId !== null && completedTargets.has(targetId);
+    const color =
+      targetId === null
+        ? sensor.purpose === "drain"
+          ? COLOR.drain
+          : sensor.purpose === "launch-band"
+            ? COLOR.launch
+            : COLOR.safe
+        : isActive
+          ? COLOR.target
+          : isCompleted
+            ? COLOR.completed
+            : COLOR.safe;
+    drawCenteredRectangle(
+      graphics,
+      viewport,
+      sensor.position,
+      sensor.width,
+      sensor.height,
+      0,
+      color,
+      isActive ? 0.34 : 0.1,
+    );
+    const topLeft = viewport.worldToScreen({
+      x: sensor.position.x - sensor.width / 2,
+      y: sensor.position.y + sensor.height / 2,
+    });
+    graphics
+      .rect(topLeft.x, topLeft.y, sensor.width * viewport.scale, sensor.height * viewport.scale)
+      .stroke({ color, width: isActive ? 2.2 : 1, alpha: isActive ? 0.98 : 0.6 });
+    if (isActive && sensor.id.endsWith("-entry")) {
+      const center = viewport.worldToScreen(sensor.position);
+      drawDiagnosticTargetMarker(graphics, center, sensor.width * viewport.scale);
+    }
+    if (isActive && sensor.id.endsWith("-checkpoint")) {
+      const center = viewport.worldToScreen(sensor.position);
+      graphics
+        .circle(center.x, center.y, Math.max(3, sensor.width * viewport.scale * 0.7))
+        .stroke({ color: COLOR.target, width: 1, alpha: 0.65 });
+    }
+  }
+
+  if (snapshot.lastSafeBallState !== null) {
+    const safe = viewport.worldToScreen(snapshot.lastSafeBallState.position);
+    graphics
+      .circle(safe.x, safe.y, snapshot.ball.radius * viewport.scale * 1.55)
+      .stroke({ color: COLOR.safe, width: 1, alpha: 0.45 });
+  }
+}
+
+function drawPlayerGeometry(
+  graphics: Graphics,
+  viewport: PhysicsViewport,
+  snapshot: GrayboxAlphaSnapshot,
+): void {
+  for (const fixture of snapshot.staticGeometry) {
+    if (fixture.kind === "sensor") {
+      continue;
+    }
+
+    const isBoundary = fixture.id.startsWith("wall-") || fixture.id.startsWith("floor-");
+    const isGate = fixture.id.startsWith("gate-return-");
+    const isVisibleRouteRail = fixture.kind === "lane" && !isGate;
+    const gateOpen = snapshot.graybox.gateStates[fixture.id] === true;
+
+    // The player view keeps only a quiet outline of the physical rails. Sensor
+    // rectangles, safe-state rings, and closed return gates are diagnostics,
+    // not gameplay art.
+    if (!isBoundary && !isVisibleRouteRail && !gateOpen) {
+      continue;
+    }
+
+    const color = isGate
+      ? COLOR.playerRoute
+      : isBoundary
+        ? fixture.kind === "floor"
+          ? COLOR.playerRoute
+          : COLOR.wall
+        : COLOR.playerRail;
+    const alpha = isGate ? 0.42 : isBoundary ? 0.7 : 0.3;
+    drawCenteredRectangle(
+      graphics,
+      viewport,
+      fixture.position,
+      fixture.width,
+      fixture.height,
+      fixture.angle,
+      color,
+      alpha,
+    );
+  }
+
+  const activeTargets = new Set(snapshot.graybox.activeTargetIds);
+  for (const sensor of snapshot.sensors) {
+    const targetId = targetIdFromSensor(sensor.id);
+    if (targetId === null || !activeTargets.has(targetId) || !sensor.id.endsWith("-entry")) {
+      continue;
+    }
+    const center = viewport.worldToScreen(sensor.position);
+    drawPlayerTargetMarker(
+      graphics,
+      center,
+      sensor.width * viewport.scale,
+      sensor.height * viewport.scale,
+    );
+  }
+}
+
+/** Draws the G2 graybox in player or diagnostic mode. */
+export function createGrayboxScene(options: GrayboxSceneOptions = {}): GrayboxScene {
+  const mode = options.mode ?? "player";
   const container = new Container();
   const graphics = new Graphics();
   container.addChild(graphics);
@@ -123,114 +360,15 @@ export function createGrayboxScene(): GrayboxScene {
     graphics
       .roundRect(offset.x, offset.y, board.width, board.height, Math.min(18, board.width * 0.04))
       .fill({ color: COLOR.board, alpha: 0.98 })
-      .stroke({ color: COLOR.border, width: 2, alpha: 0.82 });
+      .stroke({ color: COLOR.border, width: mode === "player" ? 1.4 : 2, alpha: 0.82 });
 
-    const activeTargets = new Set(snapshot.graybox.activeTargetIds);
-    const completedTargets = new Set(snapshot.graybox.completedShotIds);
-
-    for (const fixture of snapshot.staticGeometry) {
-      const isGate = fixture.id.startsWith("gate-return-");
-      const gateOpen = snapshot.graybox.gateStates[fixture.id] === true;
-      const fillColor = isGate
-        ? gateOpen
-          ? COLOR.gateOpen
-          : COLOR.gateClosed
-        : fixture.kind === "wall"
-          ? COLOR.wall
-          : fixture.kind === "lane"
-            ? COLOR.lane
-            : COLOR.floor;
-      const alpha = isGate ? (gateOpen ? 0.78 : 0.9) : fixture.kind === "lane" ? 0.72 : 0.92;
-
-      if (Math.abs(fixture.angle) > 1e-9) {
-        const corners = centeredRotatedRectangle(
-          fixture.position,
-          fixture.width,
-          fixture.height,
-          fixture.angle,
-        ).map((point) => viewport.worldToScreen(point));
-        graphics.moveTo(corners[0]?.x ?? 0, corners[0]?.y ?? 0);
-        for (const corner of corners.slice(1)) {
-          graphics.lineTo(corner.x, corner.y);
-        }
-        graphics.closePath().fill({ color: fillColor, alpha });
-        continue;
-      }
-
-      const topLeft = viewport.worldToScreen({
-        x: fixture.position.x - fixture.width / 2,
-        y: fixture.position.y + fixture.height / 2,
-      });
-      graphics
-        .rect(topLeft.x, topLeft.y, fixture.width * viewport.scale, fixture.height * viewport.scale)
-        .fill({ color: fillColor, alpha });
+    if (mode === "diagnostic") {
+      drawDiagnosticGeometry(graphics, viewport, snapshot);
+    } else {
+      drawPlayerGeometry(graphics, viewport, snapshot);
     }
 
-    for (const sensor of snapshot.sensors) {
-      const targetId = targetIdFromSensor(sensor.id);
-      const isActive = targetId !== null && activeTargets.has(targetId);
-      const isCompleted = targetId !== null && completedTargets.has(targetId);
-      const color =
-        targetId === null
-          ? sensor.purpose === "drain"
-            ? COLOR.drain
-            : sensor.purpose === "launch-band"
-              ? COLOR.launch
-              : COLOR.safe
-          : isActive
-            ? COLOR.target
-            : isCompleted
-              ? COLOR.completed
-              : COLOR.safe;
-      const topLeft = viewport.worldToScreen({
-        x: sensor.position.x - sensor.width / 2,
-        y: sensor.position.y + sensor.height / 2,
-      });
-      graphics
-        .rect(topLeft.x, topLeft.y, sensor.width * viewport.scale, sensor.height * viewport.scale)
-        .fill({ color, alpha: isActive ? 0.34 : 0.1 })
-        .stroke({ color, width: isActive ? 2.2 : 1, alpha: isActive ? 0.98 : 0.6 });
-      if (isActive && sensor.id.endsWith("-entry")) {
-        const center = viewport.worldToScreen(sensor.position);
-        drawTargetMarker(graphics, center, sensor.width * viewport.scale);
-      }
-      if (isActive && sensor.id.endsWith("-checkpoint")) {
-        const center = viewport.worldToScreen(sensor.position);
-        graphics
-          .circle(center.x, center.y, Math.max(3, sensor.width * viewport.scale * 0.7))
-          .stroke({ color: COLOR.target, width: 1, alpha: 0.65 });
-      }
-    }
-
-    if (snapshot.lastSafeBallState !== null) {
-      const safe = viewport.worldToScreen(snapshot.lastSafeBallState.position);
-      graphics
-        .circle(safe.x, safe.y, snapshot.ball.radius * viewport.scale * 1.55)
-        .stroke({ color: COLOR.safe, width: 1, alpha: 0.45 });
-    }
-
-    for (const flipper of snapshot.flippers) {
-      const corners = rotatedRectangle(
-        flipper.position,
-        flipper.angle,
-        flipper.length,
-        flipper.thickness,
-      ).map((point) => viewport.worldToScreen(point));
-      graphics.moveTo(corners[0]?.x ?? 0, corners[0]?.y ?? 0);
-      for (const corner of corners.slice(1)) {
-        graphics.lineTo(corner.x, corner.y);
-      }
-      graphics
-        .closePath()
-        .fill({ color: flipper.active ? COLOR.activeFlipper : COLOR.idleFlipper, alpha: 0.98 })
-        .stroke({ color: COLOR.board, width: 1.5, alpha: 0.9 });
-    }
-
-    const ball = viewport.worldToScreen(snapshot.ball.position);
-    graphics
-      .circle(ball.x, ball.y, snapshot.ball.radius * viewport.scale)
-      .fill({ color: COLOR.ball, alpha: 1 })
-      .stroke({ color: COLOR.ballEdge, width: 1.5, alpha: 1 });
+    drawFlippersAndBall(graphics, viewport, snapshot);
   };
 
   resize(width, height);

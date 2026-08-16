@@ -4,7 +4,7 @@ import {
   type WebGLOptions,
 } from "pixi.js";
 import type { GrayboxAlphaSnapshot } from "../graybox";
-import { createGrayboxScene } from "./graybox-scene";
+import { createGrayboxScene, type GrayboxSceneMode } from "./graybox-scene";
 import { initializeWithCleanup } from "./renderer-lifecycle";
 
 export interface PixiRuntime {
@@ -23,6 +23,7 @@ export interface PixiAppOptions {
   host: HTMLElement;
   forceWebGLFailure?: boolean;
   onFatalError?: (error: unknown) => void;
+  renderMode?: GrayboxSceneMode;
 }
 
 function viewportSize(host: HTMLElement): { width: number; height: number } {
@@ -115,7 +116,9 @@ export async function createPixiRuntime(
     canvas.dataset.testid = "pixi-canvas";
     options.host.replaceChildren(canvas);
 
-    const prototypeScene = createGrayboxScene();
+    const renderMode = options.renderMode ?? "player";
+    options.host.dataset.renderMode = renderMode;
+    const prototypeScene = createGrayboxScene({ mode: renderMode });
     const scene = prototypeScene.container;
     stage.addChild(scene);
 

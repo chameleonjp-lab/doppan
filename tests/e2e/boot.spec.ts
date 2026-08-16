@@ -100,6 +100,7 @@ test.describe("G3 / GA vertical slice boot surface", () => {
   test("auto-starts one loop with Pixi ticker disabled", async ({ page }) => {
     await page.goto("/");
     await waitForG1B(page);
+    await expect(page.locator("[data-canvas-host]")).toHaveAttribute("data-render-mode", "player");
 
     const boot = await readG1B(page);
     assertSingleRuntime(boot);
@@ -329,6 +330,7 @@ test.describe("G3 / GA vertical slice boot surface", () => {
   test("switches deterministic physics between 60 Hz and 120 Hz", async ({ page }) => {
     await page.goto("/?debug=1");
     await waitForG1B(page);
+    await expect(page.locator("[data-canvas-host]")).toHaveAttribute("data-render-mode", "diagnostic");
 
     const hz = page.locator("[data-physics-hz]");
     await expect.poll(async () => (await readG1B(page)).prototype.fixedStep.physicsStepHz).toBe(60);
