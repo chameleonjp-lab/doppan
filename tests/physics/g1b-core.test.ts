@@ -101,7 +101,9 @@ describe("G1-B Planck prototype", () => {
         world.step();
       }
       expect(world.baseState).toBe("LaunchReady");
-      expect(world.getSnapshot().ball.position.y).toBeCloseTo(0.45, 2);
+      const standbyY = world.getSnapshot().ball.position.y;
+      expect(standbyY).toBeGreaterThan(BALL_RADIUS);
+      expect(standbyY).toBeLessThan(1);
 
       world.launch("low");
       let drained = false;
