@@ -2,8 +2,8 @@
 
 - 文書種別: 重要決定・検証仕様・未決定事項
 - 作成日: 2026-08-09
-- 最終更新日: 2026-08-15
-- 版: 1.9
+- 最終更新日: 2026-08-17
+- 版: 2.0
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 
 ## 1. 運用方法
@@ -607,28 +607,26 @@
 
 ### D-059 Pages実配置は手動workflow後に判定する
 
-- 状態: 未完了
-- 確認日: 2026-08-14
+- 状態: 完了
+- 確認日: 2026-08-15
 - 確認結果:
-  - Pagesのルートは`2026-08-11`更新の旧G3 / GAゲーム画面を返した
-  - `/_preview/current/`と`robots.txt`は404だった
-  - Pages APIのSourceは旧`agent/ga-clarity-pages-sync`を示した
-  - `main`を対象にした`Development preview`の手動実行記録は確認できなかった
-- 判定: PR #20のマージだけではPages確認完了としない。`main`を指定した手動workflowが成功し、ルート案内・プレビュー・ビルドSHA・検索除外を実URLで確認できるまで、G3 / GAのPages工程と人手試遊を保留する
-- 次の確認: GitHub側でPagesのSourceを`GitHub Actions`へ設定し、`github-pages` Environment、`DEVELOPMENT_PREVIEW_ENABLED=true`を確認したうえで、`Development preview`を`main`で実行する
+  - Development preview Run #16をmain指定で実行し、verify / publishとも成功した
+  - Pages deployment `5919371962`がmain SHA `5f5b72bf7ceb0a491865b2adeb6ae6d425fd0482`を配置した
+  - ルート案内、`/_preview/current/`のゲーム、`robots.txt`の`Disallow: /`を実URLで確認した
+- 判定: Pagesの実配置とルート分離を確認済み。人手試遊と正式公開は別工程として保留する
+- 次の確認: 管理端末でG3 / GAの初見理解、3〜5ゲーム後の上達、端末上の操作感、面白さを確認する
+
 
 ### D-060 Pages Sourceがlegacy / mainへ戻った状態
 
-- 状態: 未完了・P1相当
-- 確認日: 2026-08-14
-- 確認結果:
+- 状態: 解消
+- 確認日: 2026-08-15
+- 旧状態:
   - PR #21マージ後、Pages APIは`build_type: legacy`、Sourceは`main`を返した
-  - main SHA `9ef086e`に対する動的Pages build and deploymentは成功した
   - 公開ルートはmainのゲーム画面を返し、`/_preview/current/`と`robots.txt`は404だった
-- 判定: GitHub PagesのSourceが`GitHub Actions`ではないため、予定した検査済み成果物の分離配置が機能していない。G3 / GAのPages工程、人手試遊、正式公開は停止する
-- 次の確認: ユーザー本人がGitHub Settings → PagesでSourceを`GitHub Actions`へ変更し、`github-pages` Environmentと`DEVELOPMENT_PREVIEW_ENABLED=true`を確認してから、`Development preview`を`main`で手動実行する
+- 判定: Pages SourceをGitHub Actionsへ設定し、Run #16で検査済み成果物を配置したことで、legacy / mainの分離不備は解消した。G3 / GAの人手試遊と正式公開は停止条件ではなく、次の判定工程として残る
+- 次の確認: 管理端末で3球の一回のゲームを試遊する
 
----
 
 ## 10. 未決定事項
 
@@ -649,12 +647,13 @@
 
 ## 11. 直近の順序
 
-1. PagesのSource、Environment、Repository variableを確認し、`main`を手動配置する
-2. ルート案内、`/_preview/current/`の起動、ビルドSHA、検索除外を実URLで確認する
-3. 統合候補のChromium / WebKit CIと独立レビューを確認する
-4. G3 / GAで戻り再構成型の初見理解と反復時の上達を試遊する
-5. GA開始時にG1-A / G1-Bの端末確認をまとめて行う
-6. RCで対応端末と名称・規約を最終確認する
+1. 管理端末で3球の一回のゲームを最後まで遊ぶ
+2. 初見の発射理解、左右目標の意味、戻り表示、結果・再挑戦を記録する
+3. 同じ参加者で3〜5ゲーム遊び、成功率、狙い、次に練習したい行動の変化を確認する
+4. `L1`以降から`C1`までの実プレイヤー経路と、片側連打の支配性を判定する
+5. 未達なら経路、戻り、難度、案内を最大2サイクルで調整する
+6. 人手試遊を通過した後にG4 / VSへ進み、表現と本番相当の統合を開始する
+7. RCで対応端末、名称、権利、規約、容量を最終確認する
 
 最新状態は[制作状況](./PRODUCTION_STATUS.md)を正本とする。
 
@@ -667,5 +666,14 @@
 - 決定: `workflow_dispatch`かつ公開変数が`true`でない場合は、専用ゲートを失敗させる。変数が`true`のときだけpublish jobへ進む
 - 理由: ビルド成功と実URL配信成功を分け、未配置の確認URLを合格扱いにしないため
 - 影響: 手動実行前に`DEVELOPMENT_PREVIEW_ENABLED=true`が必要。pushによる信頼済みブランチの検証挙動は変更しない
-- 見直す条件: Pages Source、Environment保護、公開変数をユーザー本人が確認し、実URLでルート案内・`/_preview/current/`・`robots.txt`を確認できた時点
+- 見直す条件: Pages Source、Environment保護、公開変数をユーザー本人が確認し、実URLでルート案内・`/_preview/current/`・`robots.txt`を確認できた時点（2026-08-15に達成）
 - 承認者: ユーザー本人（設定・公開判断）
+
+### D-062 Pages配信ゲートの完了とG3 / GA人手試遊への移行
+
+- 状態: 決定
+- 確認日: 2026-08-17
+- 根拠: Development preview Run #16、Pages deployment `5919371962`、main SHA `5f5b72bf7ceb0a491865b2adeb6ae6d425fd0482`、実URLのルート案内・`/_preview/current/`・`robots.txt`
+- 決定: Pages配信確認は完了とし、次の工程をG3 / GA人手試遊へ移す
+- 未完了: 初見理解、3〜5ゲーム後の上達、左右目標の意味、片側連打の支配性、iPhone Safariの体感、面白さ
+- 制約: 正式公開、本番素材、G4 / VSは人手試遊の判定後に開始する

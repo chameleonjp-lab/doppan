@@ -2,9 +2,9 @@
 
 - 文書種別: GitHub Pages・環境分離・GitHub Actions権限・未告知運用・規約適合
 - 作成日: 2026-08-09
-- 最終更新日: 2026-08-14
-- 版: 1.5
-- 状態: G3 / GA技術縦切りマージ済み・返球・再発射の固定物理確認済み・mainのPages手動確認待ち
+- 最終更新日: 2026-08-17
+- 版: 1.6
+- 状態: G3 / GA技術縦切りマージ済み・返球・再発射の固定物理確認済み・mainのPages配信確認済み・人手試遊前
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [推奨実装計画書](./IMPLEMENTATION_PLAN.md)
@@ -248,9 +248,7 @@ G1-Aで、GitHub Pagesの成果物を次の構成に固定する。
 
 ### 5.3 G3 / GAの確認ページ引き渡し
 
-PR #11でG3 / GAの技術縦切りはマージ済みだが、2026-08-12の公開URL確認では、リポジトリのソース`/src/main.ts`が直接配信され、画面が初期化中のまま停止した。この経路はViteの変換と依存束ねを通らないため、Pagesの確認ページとして不合格とする。
-
-正しい成果物は、`development-preview.yml`で型・静的・単体・ブラウザ検査とビルドを行った`dist`である。配置後の構成は次のとおりにする。
+G3 / GAの技術縦切りは、同じworkflowで検査したVite `dist`をPagesへ配置する。G7前の構成は次のとおりである。
 
 ```text
 /
@@ -260,19 +258,15 @@ PR #11でG3 / GAの技術縦切りはマージ済みだが、2026-08-12の公開
    └─ current/                # mainの手動実行で検査したdist
 ```
 
-この確認単位では、次をユーザー本人がGitHub側で設定・実行する。
+2026-08-15のDevelopment preview Run #16で、Pages SourceをGitHub Actionsへ設定したmainの手動実行がverify / publishとも成功した。Pages deployment `5919371962`はmain SHA `5f5b72bf7ceb0a491865b2adeb6ae6d425fd0482`を配置した。
 
-1. PagesのSourceを`GitHub Actions`へ設定する
-2. `github-pages` Environmentの必須reviewerとdeployment branch ruleを確認する
-3. Repository variable `DEVELOPMENT_PREVIEW_ENABLED=true`を確認する
-4. `main`から`Development preview`を手動実行し、refは既定値の`main`を使う
-5. ルート案内、`/_preview/current/`のゲーム起動、ビルドSHA、`robots.txt`を確認する
+実URLは次の状態である。
 
-ルートでゲームが直接起動する状態や、未変換の`src/main.ts`を配信する状態は、実装コードが動いて見えても採用しない。
+- ルート: 公開前案内
+- `/_preview/current/`: ゲーム画面
+- `robots.txt`: `Disallow: /`
 
-2026-08-14 01:25 UTCの再確認では、Pages APIが`legacy / main`となり、main SHA `9ef086e`の動的Pages配置が成功した。ルートはmainのゲーム画面を直接返し、`/_preview/current/`と`robots.txt`は404である。これはルート案内と検査済み成果物を分ける構成ではないため、GitHub PagesのSourceを`GitHub Actions`へ手動設定し、`Development preview`を`main`で実行するまで、Pages実配置と人手試遊を完了扱いにしない。
-
----
+Pages配信経路の確認は完了した。Previewは公開URLであり秘密ではないため、完成前は外部へ案内しない。正式公開、人手試遊、G7判定は別工程として残る。
 
 ## 6. 確認ページの対象
 
