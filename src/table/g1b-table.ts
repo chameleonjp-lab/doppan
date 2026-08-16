@@ -101,7 +101,10 @@ export function createG1BTableDefinition(): TableDefinition {
     fixture("wall-right", "wall", "body-wall-right", 8.85, 8, 0.3, 16),
     fixture("wall-top", "wall", "body-wall-top", 4.5, 15.85, 9, 0.3),
     fixture("floor-left", "floor", "body-floor-left", 1.65, 0.15, 3.3, 0.3),
-    fixture("floor-right", "floor", "body-floor-right", 7.35, 0.15, 3.3, 0.3),
+    // Keep a short support under the right flipper, but leave the launch lane
+    // as a real drain opening once the launch cradle is released.
+    fixture("floor-right", "floor", "body-floor-right", 6.35, 0.15, 1.3, 0.3),
+    fixture("launch-cradle", "floor", "body-launch-cradle", 7.95, 0.15, 1.4, 0.3),
     // The divider stops below the high-launch guide.  This leaves a real
     // Planck opening (including BALL_RADIUS clearance) for the guide to feed
     // the ball into the main board instead of trapping it in the lane.
