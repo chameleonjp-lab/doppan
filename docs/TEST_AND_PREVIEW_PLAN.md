@@ -2,9 +2,9 @@
 
 - 文書種別: CI・ブラウザ試験・節目の端末確認・GitHub Pages確認枠
 - 作成日: 2026-08-09
-- 最終更新日: 2026-08-14
-- 版: 2.7
-- 状態: G1-A / G1-B / G2 / G3・GA技術縦切り自動ゲート通過・プレイヤー画面マージ済み・安全ショット返球・再発射の固定物理確認済み・Pages確認待ち
+- 最終更新日: 2026-08-17
+- 版: 2.8
+- 状態: G1-A / G1-B / G2 / G3・GA技術縦切り自動ゲート通過・Pages配信確認済み・プレイヤー画面マージ済み・安全ショット返球・再発射の固定物理確認済み・人手試遊前
 - 現在地: [制作状況](./PRODUCTION_STATUS.md)
 - 関連文書:
   - [ゲームエンジン設計](./ENGINEERING_ARCHITECTURE.md)
@@ -193,7 +193,7 @@ mainへワークフローを取り込んだ後:
 
 外部フォークでは実行しない。
 
-2026-08-12に公開URLを確認した結果、ルートが`/src/main.ts`を直接配信して「初期化中」のまま停止した。この状態はブラウザ試験の成功とは別のPages配信不備である。さらに2026-08-14 01:25 UTCの確認では、Pages APIが`legacy / main`となり、main SHA `9ef086e`の動的Pages配置が成功したものの、ルートがmainのゲーム画面を直接返し、`/_preview/current/`と`robots.txt`が404だった。PagesのSourceを`GitHub Actions`へ設定し、mainの検査済み`dist`を`/_preview/current/`へ配置してから、実URLの確認を行う。
+2026-08-15のDevelopment preview Run #16で、Pages SourceをGitHub Actionsへ設定したmainの手動実行がverify / publishとも成功した。main SHA `5f5b72bf7ceb0a491865b2adeb6ae6d425fd0482`の検査済み`dist`を`/_preview/current/`へ配置し、ルート案内、ゲーム起動、ビルドSHA、`robots.txt`の検索除外を実URLで確認した。Pages配信確認は完了したが、人手試遊は別工程として残る。
 
 ### 4.5 `production-deploy.yml`
 
