@@ -94,6 +94,31 @@ describe("G1-B Planck prototype", () => {
     world.destroy();
   });
 
+  it("keeps the launch cradle during standby and drains a weak launch after firing", () => {
+    for (const physicsStepHz of [60, 120] as const) {
+      const world = new PinballWorld({ physicsStepHz });
+      for (let step = 0; step < physicsStepHz / 2; step += 1) {
+        world.step();
+      }
+      expect(world.baseState).toBe("LaunchReady");
+      expect(world.getSnapshot().ball.position.y).toBeCloseTo(0.45, 2);
+
+      world.launch("low");
+      let drained = false;
+      for (let step = 0; step < physicsStepHz * 3; step += 1) {
+        const result = world.step();
+        drained ||= result.drained;
+        if (drained) {
+          break;
+        }
+      }
+      const label = JSON.stringify({ physicsStepHz });
+      expect(drained, label).toBe(true);
+      expect(world.baseState, label).toBe("BallEnding");
+      world.destroy();
+    }
+  });
+
   it("copies impact data and does not expose Planck contact references", () => {
     const world = new PinballWorld({ gravityY: 0 });
     world.ballBody.setTransform(planck.Vec2(0.45, 8), 0);
