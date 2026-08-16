@@ -337,6 +337,7 @@ async function initializePixiRuntime(): Promise<boolean> {
     const created = await createPixiRuntime({
       host: canvasHost,
       forceWebGLFailure: forceFailure,
+      renderMode: debugMode ? "diagnostic" : "player",
       onFatalError: showWebglError,
     });
     if (disposed || generation !== runtimeGeneration) {
