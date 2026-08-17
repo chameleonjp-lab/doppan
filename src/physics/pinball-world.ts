@@ -38,6 +38,7 @@ export const BALL_RADIUS = 0.15;
 export const DEFAULT_VELOCITY_CAP = 28;
 export const DEFAULT_PHYSICS_STEP_HZ: PhysicsStepHz = 60;
 export const BALL_ID = "ball-1";
+const LAUNCH_CRADLE_FIXTURE_ID = "launch-cradle";
 
 export type PhysicsStepHz = 60 | 120;
 
@@ -872,6 +873,10 @@ export class PinballWorld {
       this.ballBody.setLinearVelocity(planck.Vec2(velocity.x, velocity.y));
       this.ballBody.setAngularVelocity(0);
       this.ballBody.setAwake(true);
+      const launchCradle = this.fixtures.get(LAUNCH_CRADLE_FIXTURE_ID);
+      if (launchCradle !== undefined) {
+        this.setFixtureEnabled(LAUNCH_CRADLE_FIXTURE_ID, launchCradle, false);
+      }
       this.routeContext = null;
       return;
     }
@@ -1154,6 +1159,10 @@ export class PinballWorld {
   }
 
   private resetBallToLaunch(nextBaseState: BaseState = "LaunchReady"): void {
+    const launchCradle = this.fixtures.get(LAUNCH_CRADLE_FIXTURE_ID);
+    if (launchCradle !== undefined) {
+      this.setFixtureEnabled(LAUNCH_CRADLE_FIXTURE_ID, launchCradle, true);
+    }
     this.ballBody.setActive(true);
     this.ballBody.setTransform(planck.Vec2(this.launchPosition.x, this.launchPosition.y), 0);
     this.ballBody.setLinearVelocity(planck.Vec2(0, 0));
