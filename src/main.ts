@@ -15,6 +15,12 @@ import {
   type GrayboxAlphaSnapshot,
 } from "./graybox";
 import type { PhysicsStepHz } from "./loop/fixed-step-clock";
+import {
+  doppanRanking,
+  normalizeDoppanPlayerName,
+  validateDoppanPlayerName,
+  type DoppanRankingEntry,
+} from "./ranking/doppan-ranking";
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -44,6 +50,11 @@ const resultOverlay = requiredElement<HTMLElement>("[data-game-overlay='result']
 const resultScore = requiredElement<HTMLElement>("[data-result='score']");
 const resultProgress = requiredElement<HTMLElement>("[data-result='progress']");
 const resultClimax = requiredElement<HTMLElement>("[data-result='climax']");
+const resultPlayerName = requiredElement<HTMLElement>("[data-result='player-name']");
+const rankingStatus = requiredElement<HTMLElement>("[data-ranking-status]");
+const rankingList = requiredElement<HTMLOListElement>("[data-ranking-list]");
+const playerNameInput = requiredElement<HTMLInputElement>("[data-player-name]");
+const playerNameError = requiredElement<HTMLElement>("[data-player-name-error]");
 const grayboxElements = {
   target: requiredElement<HTMLElement>("[data-graybox='target']"),
   returnRoute: requiredElement<HTMLElement>("[data-graybox='return']"),
@@ -78,6 +89,9 @@ let disposed = false;
 let runtimeGeneration = 0;
 let lastDiagnosticsAt = -Infinity;
 let gameStarted = false;
+let playerName = "";
+let rankingSubmissionTask: Promise<void> | null = null;
+let rankingRequestGeneration = 0;
 
 const WEBGL_ERROR_GUIDE =
   "WebGL描画を開始または継続できませんでした。ページを再読み込みするか、ブラウザのハードウェアアクセラレーションを確認してください。";
@@ -108,6 +122,68 @@ function updateResultOverlay(snapshot: GaSessionSnapshot): void {
     String(Math.round(progress * GRAYBOX_PATH_LENGTH)) + " / " + String(GRAYBOX_PATH_LENGTH);
   resultClimax.textContent =
     snapshot.result?.climaxState === "active" ? "クライマックス到達" : "クライマックス未到達";
+  resultPlayerName.textContent = playerName || "—";
+  if (isResult && snapshot.result !== null && rankingSubmissionTask === null) {
+    rankingSubmissionTask = submitResultToRanking(snapshot.result.score, rankingRequestGeneration);
+  }
+}
+
+function renderRanking(entries: readonly DoppanRankingEntry[]): void {
+  rankingList.replaceChildren();
+  for (const entry of entries) {
+    const item = document.createElement("li");
+    item.className = "ranking-item";
+    const name = document.createElement("span");
+    name.className = "ranking-name";
+    name.textContent = `${entry.rank}. ${entry.displayName}`;
+    const score = document.createElement("strong");
+    score.className = "ranking-score";
+    score.textContent = `${entry.bestScore}点`;
+    item.append(name, score);
+    rankingList.append(item);
+  }
+  if (entries.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "ranking-empty";
+    empty.textContent = "まだランキング記録がありません";
+    rankingList.append(empty);
+  }
+}
+
+async function submitResultToRanking(score: number, generation: number): Promise<void> {
+  rankingStatus.textContent = "ランキングへ登録中…";
+  rankingStatus.dataset.state = "loading";
+  try {
+    const submission = await doppanRanking.submitScore(playerName, score);
+    if (generation !== rankingRequestGeneration) {
+      return;
+    }
+    rankingStatus.textContent = submission.isNewBest
+      ? "自己ベストをランキングへ登録しました"
+      : "今回のスコアをランキングへ反映しました";
+    rankingStatus.dataset.state = "success";
+  } catch {
+    if (generation !== rankingRequestGeneration) {
+      return;
+    }
+    rankingStatus.textContent = "ランキングへ登録できませんでした（ゲーム結果は表示しています）";
+    rankingStatus.dataset.state = "error";
+  }
+  try {
+    const ranking = await doppanRanking.getRanking();
+    if (generation === rankingRequestGeneration) {
+      renderRanking(ranking);
+    }
+  } catch {
+    if (generation !== rankingRequestGeneration) {
+      return;
+    }
+    rankingList.replaceChildren();
+    const unavailable = document.createElement("li");
+    unavailable.className = "ranking-empty";
+    unavailable.textContent = "ランキングを読み込めませんでした";
+    rankingList.append(unavailable);
+  }
 }
 
 function destroyRuntimeSafely(target: PixiRuntime | null): { error: unknown } | null {
@@ -237,10 +313,16 @@ function resetSession(started: boolean): void {
     return;
   }
   gameStarted = started;
+  rankingRequestGeneration += 1;
+  rankingSubmissionTask = null;
   session.reset(parsePhysicsHz(hzSelect.value));
   prototypeError.hidden = true;
   reportOutput.hidden = true;
   reportOutput.textContent = "";
+  playerNameError.hidden = true;
+  rankingStatus.textContent = "ランキングへ登録中…";
+  rankingStatus.dataset.state = "idle";
+  rankingList.replaceChildren();
   pauseButton.disabled = !started;
   resetButton.disabled = false;
   copyReportButton.disabled = !debugMode;
@@ -257,9 +339,23 @@ function resetSession(started: boolean): void {
 }
 
 function beginGame(): void {
+  const validationError = validateDoppanPlayerName(playerNameInput.value);
+  if (validationError !== null) {
+    playerNameError.hidden = false;
+    playerNameError.textContent = validationError;
+    playerNameInput.focus();
+    return;
+  }
+  playerName = normalizeDoppanPlayerName(playerNameInput.value);
+  playerNameInput.value = playerName;
   resetSession(true);
   startGameButton.blur();
   restartGameButton.blur();
+}
+
+function prepareNewGame(): void {
+  resetSession(false);
+  playerNameInput.focus();
 }
 
 function resetPrototype(): void {
@@ -267,7 +363,16 @@ function resetPrototype(): void {
 }
 
 startGameButton.addEventListener("click", beginGame, { signal: lifecycleController.signal });
-restartGameButton.addEventListener("click", beginGame, { signal: lifecycleController.signal });
+restartGameButton.addEventListener("click", prepareNewGame, { signal: lifecycleController.signal });
+playerNameInput.addEventListener(
+  "input",
+  () => {
+    const validationError = validateDoppanPlayerName(playerNameInput.value);
+    playerNameError.hidden = validationError === null;
+    playerNameError.textContent = validationError ?? "";
+  },
+  { signal: lifecycleController.signal },
+);
 pauseButton.addEventListener("click", togglePause, { signal: lifecycleController.signal });
 resetButton.addEventListener("click", resetPrototype, { signal: lifecycleController.signal });
 hzSelect.addEventListener("change", resetPrototype, { signal: lifecycleController.signal });

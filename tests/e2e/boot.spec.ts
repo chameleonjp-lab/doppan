@@ -18,7 +18,8 @@ async function readG1B(page: Page) {
   });
 }
 
-async function startGame(page: Page): Promise<void> {
+async function startGame(page: Page, name = "テストプレイヤー"): Promise<void> {
+  await page.locator("[data-player-name]").fill(name);
   await page.getByRole("button", { name: "ゲームを始める" }).click();
   await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");
 }
@@ -120,6 +121,19 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     await expect(page.locator("[data-status]")).toHaveText("ゲーム開始待ち");
     await expect(page.locator("[data-status]")).toHaveAttribute("data-active", "false");
     await expect(page.locator("[data-build-environment]")).toBeHidden();
+  });
+
+  test("requires a display name at game start without storing it on the device", async ({ page }) => {
+    await page.goto("/");
+    await waitForG1B(page);
+
+    await page.getByRole("button", { name: "ゲームを始める" }).click();
+    await expect(page.locator("[data-player-name-error]")).toHaveText("名前を入力してください");
+    await page.locator("[data-player-name]").fill("  あお  ");
+    await page.getByRole("button", { name: "ゲームを始める" }).click();
+    await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");
+    await expect(page.locator("[data-game-overlay='start']")).toBeHidden();
+    expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
   });
 
   test("exposes the three-ball session and an in-memory playtest report", async ({ page }) => {

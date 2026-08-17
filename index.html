@@ -101,6 +101,19 @@
               <p class="overlay-kicker">3球でルートをつなぐ</p>
               <h2>目標へ当てて、戻り道を変える</h2>
               <p>まず発射ボタンを押し続け、離して球を出します。左右のボタンで球を返します。</p>
+              <label class="player-name-field">
+                <span>ランキング表示名</span>
+                <input
+                  type="text"
+                  data-player-name
+                  name="player-name"
+                  maxlength="20"
+                  autocomplete="nickname"
+                  placeholder="20文字以内"
+                  required
+                />
+              </label>
+              <p class="player-name-error" data-player-name-error role="alert" hidden></p>
               <button type="button" class="overlay-button" data-action="start-game">ゲームを始める</button>
             </div>
 
@@ -108,8 +121,11 @@
               <p class="overlay-kicker">3球終了</p>
               <h2>今回の結果</h2>
               <strong class="result-score" data-result="score">0</strong>
+              <p class="result-line">プレイヤー <span data-result="player-name">—</span></p>
               <p class="result-line">進行 <span data-result="progress">0 / 5</span></p>
               <p class="result-line" data-result="climax">クライマックス未到達</p>
+              <p class="ranking-status" data-ranking-status role="status" aria-live="polite">ランキングへ登録中…</p>
+              <ol class="ranking-list" data-ranking-list aria-label="DOPPANランキング"></ol>
               <button type="button" class="overlay-button" data-action="restart-game">もう一度遊ぶ</button>
             </div>
 
