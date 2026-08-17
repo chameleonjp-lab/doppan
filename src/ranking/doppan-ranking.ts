@@ -106,7 +106,7 @@ export function createDoppanRankingApi(
         throw error;
       }
       const row = firstRow(data) as ScoreSubmissionRow;
-      return {
+      const submission = {
         accepted: booleanValue(row.accepted, false),
         displayName: stringValue(row.result_display_name, displayName),
         bestScore: numberValue(row.result_best_score, score),
@@ -114,6 +114,10 @@ export function createDoppanRankingApi(
         isFirstPlay: booleanValue(row.is_first_play, false),
         isNewBest: booleanValue(row.is_new_best, false),
       };
+      if (!submission.accepted) {
+        throw new Error("DOPPAN ranking submission was not accepted");
+      }
+      return submission;
     },
     getRanking: async (limit = DOPPAN_RANKING_LIMIT) => {
       const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
