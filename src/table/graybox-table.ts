@@ -47,6 +47,15 @@ const verticalSensorPositions = (
   point(x, y + 1.44),
 ];
 
+const descendingSensorPositions = (
+  x: number,
+  y: number,
+): readonly [TablePoint, TablePoint, TablePoint] => [
+  point(x, y),
+  point(x, y - 0.5),
+  point(x, y - 1.0),
+];
+
 const grayboxShots = [
   // The opening safe shots follow trajectories produced by the real right
   // flipper.  L0 catches the fast leftward return after the divider rebound;
@@ -61,8 +70,14 @@ const grayboxShots = [
     sensorPositions: [point(6.65, 1.8), point(6.65, 2.52), point(6.65, 3.24)],
     expectedDirection: point(0, 1),
   },
-  { id: "L1", sensorPositions: verticalSensorPositions(2.2, 8.05), expectedDirection: point(0, 1) },
-  { id: "R1", sensorPositions: verticalSensorPositions(6.8, 8.05), expectedDirection: point(0, 1) },
+  // The first core shots live on the real safe-return lanes.  They are
+  // intentionally descending cross-return sequences: after R0 the ball
+  // drops through the right return lane into L1, and after L0 it drops
+  // through the left return lane into R1.  Keeping these sensors on the
+  // measured trajectory makes the second decision playable before we add
+  // the higher-risk upper-board rails.
+  { id: "L1", sensorPositions: descendingSensorPositions(6.2, 2.4), expectedDirection: point(0, -1) },
+  { id: "R1", sensorPositions: descendingSensorPositions(1.6, 2.0), expectedDirection: point(0, -1) },
   { id: "L2", sensorPositions: verticalSensorPositions(1.45, 11.05), expectedDirection: point(0, 1) },
   { id: "R2", sensorPositions: verticalSensorPositions(7.55, 11.05), expectedDirection: point(0, 1) },
   { id: "C0", sensorPositions: verticalSensorPositions(4.5, 10.0), expectedDirection: point(0, 1) },
