@@ -627,6 +627,12 @@ summary:focus-visible {
   flex-direction: column;
   gap: 7px;
 }
+.platform-link {
+  color: #79e2c2;
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-decoration: underline;
+}
 
 .pause-button {
   min-height: 40px;
@@ -780,6 +786,26 @@ summary:focus-visible {
   font-size: 0.84rem;
   line-height: 1.55;
 }
+.name-label {
+  align-self: stretch;
+  color: #f6c76e;
+  font-size: 0.74rem;
+  font-weight: 750;
+  text-align: left;
+}
+.name-input {
+  width: min(100%, 300px);
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid rgba(121, 226, 194, 0.38);
+  border-radius: 12px;
+  color: #f5f7fb;
+  background: rgba(10, 16, 31, 0.88);
+  font: inherit;
+  text-align: center;
+}
+.name-input:focus { outline: 2px solid #79e2c2; outline-offset: 1px; }
+.name-status, .share-status, .ranking-status { min-height: 1.3em; color: #f9db9c !important; font-size: 0.72rem !important; }
 
 .overlay-kicker {
   margin: 0;
@@ -801,6 +827,42 @@ summary:focus-visible {
   cursor: pointer;
   font-weight: 850;
 }
+.overlay-button.secondary {
+  color: #f5f7fb;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+.result-overlay {
+  justify-content: flex-start;
+  overflow-y: auto;
+  padding-top: 28px;
+  padding-bottom: 28px;
+}
+.result-player { color: #79e2c2 !important; }
+.result-share-text {
+  width: min(100%, 340px);
+  min-height: 74px;
+  padding: 9px;
+  border: 1px solid rgba(121, 226, 194, 0.28);
+  border-radius: 10px;
+  color: #f5f7fb;
+  background: rgba(10, 16, 31, 0.8);
+  font: 0.75rem/1.45 inherit;
+  resize: vertical;
+}
+.online-ranking {
+  width: min(100%, 340px);
+  margin: 4px 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(246, 199, 110, 0.25);
+  border-radius: 12px;
+  background: rgba(10, 16, 31, 0.6);
+  text-align: left;
+}
+.online-ranking h3 { margin: 0 0 6px; color: #f6c76e; font-size: 0.8rem; text-align: center; }
+.online-ranking ol { margin: 0; padding-left: 22px; }
+.online-ranking li { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .72rem; }
+.online-ranking .ranking-status { text-align: center; }
 
 .result-score {
   color: #ffe18a;
