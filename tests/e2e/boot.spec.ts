@@ -19,6 +19,7 @@ async function readG1B(page: Page) {
 }
 
 async function startGame(page: Page): Promise<void> {
+  await page.locator("#player-name").fill("テストプレイヤー");
   await page.getByRole("button", { name: "ゲームを始める" }).click();
   await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");
 }

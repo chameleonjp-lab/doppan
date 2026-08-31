@@ -20,6 +20,8 @@
               <button type="button" class="toolbar-button pause-button" data-action="toggle-pause" aria-pressed="false" disabled>
                 一時停止 (Esc)
               </button>
+              <button type="button" class="toolbar-button" data-action="share-home">ゲームをシェア</button>
+              <a class="platform-link" href="https://chameleonjp-lab.github.io/chameleonjp_lab/" target="_blank" rel="noopener noreferrer">実験場へ</a>
             </div>
           </div>
           <p class="lead">
@@ -101,7 +103,11 @@
               <p class="overlay-kicker">3球でルートをつなぐ</p>
               <h2>目標へ当てて、戻り道を変える</h2>
               <p>まず発射ボタンを押し続け、離して球を出します。左右のボタンで球を返します。</p>
+              <label class="name-label" for="player-name">ランキング表示名</label>
+              <input id="player-name" class="name-input" type="text" maxlength="20" autocomplete="nickname" placeholder="名前を入力してください" />
+              <p class="name-status" data-name-status role="status" aria-live="polite"></p>
               <button type="button" class="overlay-button" data-action="start-game">ゲームを始める</button>
+              <button type="button" class="overlay-button secondary" data-action="share-start">ゲームをシェア</button>
             </div>
 
             <div class="game-overlay result-overlay" data-game-overlay="result" hidden>
@@ -110,7 +116,17 @@
               <strong class="result-score" data-result="score">0</strong>
               <p class="result-line">進行 <span data-result="progress">0 / 5</span></p>
               <p class="result-line" data-result="climax">クライマックス未到達</p>
+              <p class="result-player" data-result="player"></p>
+              <textarea class="result-share-text" data-result="share-text" readonly aria-label="結果のシェア文"></textarea>
+              <button type="button" class="overlay-button" data-action="share-result">結果をシェア（文面をコピー）</button>
+              <p class="share-status" data-share-status role="status" aria-live="polite"></p>
+              <section class="online-ranking" aria-labelledby="doppan-ranking-title">
+                <h3 id="doppan-ranking-title">スコアランキング TOP10</h3>
+                <ol data-ranking-list><li>ランキングを読み込み中…</li></ol>
+                <p class="ranking-status" data-ranking-status role="status" aria-live="polite"></p>
+              </section>
               <button type="button" class="overlay-button" data-action="restart-game">もう一度遊ぶ</button>
+              <a class="platform-link" href="https://chameleonjp-lab.github.io/chameleonjp_lab/" target="_blank" rel="noopener noreferrer">カメレオンJPの実験場へ</a>
             </div>
 
             <section class="input-panel" aria-label="ピンボール操作">

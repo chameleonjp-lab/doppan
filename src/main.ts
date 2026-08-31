@@ -44,6 +44,16 @@ const resultOverlay = requiredElement<HTMLElement>("[data-game-overlay='result']
 const resultScore = requiredElement<HTMLElement>("[data-result='score']");
 const resultProgress = requiredElement<HTMLElement>("[data-result='progress']");
 const resultClimax = requiredElement<HTMLElement>("[data-result='climax']");
+const playerNameInput = requiredElement<HTMLInputElement>("#player-name");
+const nameStatus = requiredElement<HTMLElement>("[data-name-status]");
+const resultPlayer = requiredElement<HTMLElement>("[data-result='player']");
+const resultShareText = requiredElement<HTMLTextAreaElement>("[data-result='share-text']");
+const shareStatus = requiredElement<HTMLElement>("[data-share-status]");
+const rankingList = requiredElement<HTMLOListElement>("[data-ranking-list]");
+const rankingStatus = requiredElement<HTMLElement>("[data-ranking-status]");
+const homeShareButton = requiredElement<HTMLButtonElement>("[data-action='share-home']");
+const startShareButton = requiredElement<HTMLButtonElement>("[data-action='share-start']");
+const resultShareButton = requiredElement<HTMLButtonElement>("[data-action='share-result']");
 const grayboxElements = {
   target: requiredElement<HTMLElement>("[data-graybox='target']"),
   returnRoute: requiredElement<HTMLElement>("[data-graybox='return']"),
@@ -78,6 +88,14 @@ let disposed = false;
 let runtimeGeneration = 0;
 let lastDiagnosticsAt = -Infinity;
 let gameStarted = false;
+let playerName = readPlayerName();
+let resultPlatformLoaded = false;
+
+const SUPABASE_URL = "https://mlpnjgezrnhdxsxolyzj.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_drzcy0v97knU6FgjqSgBHw_0A9XPdFM";
+const GAME_SLUG = "doppan";
+const CLIENT_VERSION = "doppan-2026-08-31-platform";
+playerNameInput.value = playerName;
 
 const WEBGL_ERROR_GUIDE =
   "WebGL描画を開始または継続できませんでした。ページを再読み込みするか、ブラウザのハードウェアアクセラレーションを確認してください。";
@@ -108,6 +126,69 @@ function updateResultOverlay(snapshot: GaSessionSnapshot): void {
     String(Math.round(progress * GRAYBOX_PATH_LENGTH)) + " / " + String(GRAYBOX_PATH_LENGTH);
   resultClimax.textContent =
     snapshot.result?.climaxState === "active" ? "クライマックス到達" : "クライマックス未到達";
+  if (isResult && !resultPlatformLoaded) {
+    resultPlatformLoaded = true;
+    void renderResultPlatform(Number(score));
+  }
+  if (!isResult) resultPlatformLoaded = false;
+}
+
+function readPlayerName(): string {
+  try { return cleanName(localStorage.getItem("doppan.player-name") ?? ""); } catch { return ""; }
+}
+
+function cleanName(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 20);
+}
+
+function currentGameUrl(): string { return new URL(window.location.href).toString().split("#")[0] ?? window.location.href; }
+function homeShareText(): string { return `DOPPAN「つなぎ直す」で3球のルートをつなごう！\n${currentGameUrl()}\n#DOPPAN #ミニゲーム`; }
+function resultShareMessage(finalScore: number, progress: number, climax: boolean): string {
+  return `${playerName}さんのDOPPAN結果：${finalScore}点、進行${Math.round(progress * GRAYBOX_PATH_LENGTH)}/${GRAYBOX_PATH_LENGTH}！${climax ? "クライマックス到達！" : "ルートをつなぎ直しました。"}\n${currentGameUrl()}\n#DOPPAN #ミニゲーム`;
+}
+
+async function shareOrCopy(text: string, statusElement: HTMLElement, textElement?: HTMLTextAreaElement): Promise<void> {
+  statusElement.textContent = "";
+  if (navigator.share) {
+    try { await navigator.share({ title: "DOPPAN", text, url: currentGameUrl() }); statusElement.textContent = "共有しました。"; return; }
+    catch (error) { if (error instanceof DOMException && error.name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(text); statusElement.textContent = "シェア文をコピーしました。"; }
+  catch { if (textElement) { textElement.focus(); textElement.select(); } statusElement.textContent = "シェア文を選択しました。コピーしてご利用ください。"; }
+}
+
+async function callRankingRpc(name: string, payload: Record<string, unknown>): Promise<unknown> {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, { method: "POST", headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const text = await response.text();
+  const data: unknown = text ? JSON.parse(text) : null;
+  if (!response.ok) throw new Error(`${name}: ${response.status}`);
+  return data;
+}
+
+function rankingRows(data: unknown): Array<Record<string, unknown>> { return Array.isArray(data) ? data.slice(0, 10) as Array<Record<string, unknown>> : []; }
+
+async function renderResultPlatform(finalScore: number): Promise<void> {
+  const snapshot = session.snapshot();
+  const progress = snapshot.result?.progress ?? snapshot.graybox.progress;
+  const climax = snapshot.result?.climaxState === "active";
+  const text = resultShareMessage(finalScore, progress, climax);
+  resultPlayer.textContent = `${playerName}さんの結果`;
+  resultShareText.value = text;
+  rankingList.innerHTML = "<li>ランキングを読み込み中…</li>";
+  rankingStatus.textContent = "ランキングを更新中…";
+  try {
+    await callRankingRpc("submit_score", { p_display_name: playerName, p_game_slug: GAME_SLUG, p_score: Math.trunc(finalScore), p_client_version: CLIENT_VERSION });
+  } catch { rankingStatus.textContent = "今回のスコアを送信できませんでした。ランキングを表示します。"; }
+  try {
+    const rows = rankingRows(await callRankingRpc("get_best_score_ranking", { p_game_slug: GAME_SLUG, p_limit: 10 }));
+    rankingList.innerHTML = rows.length ? "" : "<li>まだランキングがありません。</li>";
+    for (const row of rows) {
+      const item = document.createElement("li");
+      item.textContent = `${String(row.display_name ?? row.player_name ?? "ななし")}：${Number(row.score ?? row.best_score ?? 0)}点`;
+      rankingList.appendChild(item);
+    }
+    if (rankingStatus.textContent === "ランキングを更新中…") rankingStatus.textContent = "上位10名を表示しています。";
+  } catch { rankingList.innerHTML = "<li>ランキングを読み込めませんでした。</li>"; rankingStatus.textContent = "ランキングを読み込めませんでした。"; }
 }
 
 function destroyRuntimeSafely(target: PixiRuntime | null): { error: unknown } | null {
@@ -237,6 +318,7 @@ function resetSession(started: boolean): void {
     return;
   }
   gameStarted = started;
+  resultPlatformLoaded = false;
   session.reset(parsePhysicsHz(hzSelect.value));
   prototypeError.hidden = true;
   reportOutput.hidden = true;
@@ -257,6 +339,15 @@ function resetSession(started: boolean): void {
 }
 
 function beginGame(): void {
+  playerName = cleanName(playerNameInput.value);
+  playerNameInput.value = playerName;
+  if (!playerName) {
+    nameStatus.textContent = "名前を入力してから開始してください。";
+    playerNameInput.focus();
+    return;
+  }
+  localStorage.setItem("doppan.player-name", playerName);
+  nameStatus.textContent = "";
   resetSession(true);
   startGameButton.blur();
   restartGameButton.blur();
@@ -268,6 +359,10 @@ function resetPrototype(): void {
 
 startGameButton.addEventListener("click", beginGame, { signal: lifecycleController.signal });
 restartGameButton.addEventListener("click", beginGame, { signal: lifecycleController.signal });
+playerNameInput.addEventListener("input", () => { nameStatus.textContent = ""; }, { signal: lifecycleController.signal });
+homeShareButton.addEventListener("click", () => void shareOrCopy(homeShareText(), nameStatus), { signal: lifecycleController.signal });
+startShareButton.addEventListener("click", () => void shareOrCopy(homeShareText(), nameStatus), { signal: lifecycleController.signal });
+resultShareButton.addEventListener("click", () => void shareOrCopy(resultShareText.value, shareStatus, resultShareText), { signal: lifecycleController.signal });
 pauseButton.addEventListener("click", togglePause, { signal: lifecycleController.signal });
 resetButton.addEventListener("click", resetPrototype, { signal: lifecycleController.signal });
 hzSelect.addEventListener("change", resetPrototype, { signal: lifecycleController.signal });
