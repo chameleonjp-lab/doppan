@@ -165,7 +165,28 @@ async function callRankingRpc(name: string, payload: Record<string, unknown>): P
   return data;
 }
 
-function rankingRows(data: unknown): Array<Record<string, unknown>> { return Array.isArray(data) ? data.slice(0, 10) as Array<Record<string, unknown>> : []; }
+function rankingRows(data: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(data) ? data.slice(0, 10) as Array<Record<string, unknown>> : [];
+}
+
+function rankingDisplayName(value: unknown): string {
+  if (typeof value !== "string") {
+    return "ななし";
+  }
+  const normalized = value.trim();
+  return normalized || "ななし";
+}
+
+function rankingScore(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
 
 async function renderResultPlatform(finalScore: number): Promise<void> {
   const snapshot = session.snapshot();
@@ -184,7 +205,9 @@ async function renderResultPlatform(finalScore: number): Promise<void> {
     rankingList.innerHTML = rows.length ? "" : "<li>まだランキングがありません。</li>";
     for (const row of rows) {
       const item = document.createElement("li");
-      item.textContent = `${String(row.display_name ?? row.player_name ?? "ななし")}：${Number(row.score ?? row.best_score ?? 0)}点`;
+      const displayName = rankingDisplayName(row.display_name ?? row.player_name);
+      const score = rankingScore(row.score ?? row.best_score);
+      item.textContent = `${displayName}：${score}点`;
       rankingList.appendChild(item);
     }
     if (rankingStatus.textContent === "ランキングを更新中…") rankingStatus.textContent = "上位10名を表示しています。";
