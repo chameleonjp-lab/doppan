@@ -5,6 +5,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 const rootSelector = "[data-app-root]";
 const fireSelector = "[data-action=fire]";
 const pageErrors = new WeakMap<Page, string[]>();
+const deterministicClockPages = new WeakSet<Page>();
 
 type ViewportCase = {
   readonly name: string;
@@ -17,6 +18,8 @@ const viewports: readonly ViewportCase[] = [
   { name: "320x568", width: 320, height: 568 },
   { name: "landscape844x390", width: 844, height: 390 },
 ];
+
+const clockStepMs = 200;
 
 type RootDiagnostics = {
   readonly ready: string | undefined;
@@ -46,14 +49,23 @@ async function readRootDiagnostics(page: Page): Promise<RootDiagnostics> {
 
 async function installDeterministicClock(page: Page): Promise<void> {
   await page.clock.install({ time: new Date("2026-09-05T00:00:00.000Z") });
+  deterministicClockPages.add(page);
 }
 
 async function runClock(page: Page, durationMs: number): Promise<void> {
-  // The runtime intentionally pauses after a dropped frame over 250 ms. Keep
-  // every virtual advance below that boundary so this remains a normal play.
-  for (let remaining = durationMs; remaining > 0; remaining -= 100) {
-    await page.clock.runFor(Math.min(100, remaining));
+  // fastForward fires at most one due RAF. Keep that single frame below the
+  // runtime's 250 ms stale-frame boundary while avoiding hundreds of expensive
+  // renderer frames in a long deterministic path.
+  for (let remaining = durationMs; remaining > 0; remaining -= clockStepMs) {
+    await page.clock.fastForward(Math.min(clockStepMs, remaining));
   }
+}
+
+async function flushInputFrame(page: Page): Promise<void> {
+  // Input handlers update session state synchronously; updateUi publishes
+  // data-firing on the next RAF. Keep this bounded and below the stale-frame
+  // pause threshold while the deterministic clock is paused.
+  await page.clock.fastForward(20);
 }
 
 async function advanceUntil(
@@ -62,8 +74,8 @@ async function advanceUntil(
   timeoutMs: number,
   label: string,
 ): Promise<void> {
-  for (let elapsedMs = 0; elapsedMs < timeoutMs; elapsedMs += 100) {
-    await runClock(page, 100);
+  for (let elapsedMs = 0; elapsedMs < timeoutMs; elapsedMs += clockStepMs) {
+    await runClock(page, Math.min(clockStepMs, timeoutMs - elapsedMs));
     if (await predicate()) return;
   }
   throw new Error(`${label} was not reached within ${timeoutMs} ms`);
@@ -74,6 +86,11 @@ async function boot(page: Page, url = "/"): Promise<void> {
   await expect(root(page)).toHaveAttribute("data-ready", "true");
   await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(1);
   await expect(page.locator("[data-dialog=start]")).toBeVisible();
+  if (deterministicClockPages.has(page)) {
+    // Keep the fake clock stopped while WebGL startup and input setup spend
+    // wall time. The game is still idle, so this pause cannot hide gameplay.
+    await page.clock.pauseAt(new Date("2026-09-05T01:00:00.000Z"));
+  }
 }
 
 async function startGame(page: Page, name = "テストプレイヤー"): Promise<void> {
@@ -93,12 +110,15 @@ async function holdFire(page: Page, durationMs = 600): Promise<number> {
   if (bounds === null) throw new Error("fire button has no layout box");
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
+  await flushInputFrame(page);
   await expect(fire).toHaveAttribute("data-firing", "true");
   await runClock(page, durationMs);
-  const firedWhileHeld = Number((await readRootDiagnostics(page)).fired ?? "0");
   await page.mouse.up();
+  await flushInputFrame(page);
   await expect(fire).toHaveAttribute("data-firing", "false");
-  return firedWhileHeld;
+  // Read the counter only after pointerup has released the firing source. A
+  // frame can finish between a diagnostic read and the browser input event.
+  return Number((await readRootDiagnostics(page)).fired ?? "0");
 }
 
 async function screenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
@@ -184,12 +204,14 @@ test.describe("90秒パチンコ体験", () => {
 
     const fire = page.locator(fireSelector);
     await page.keyboard.down("Space");
+    await flushInputFrame(page);
     await expect(fire).toHaveAttribute("data-firing", "true");
     await runClock(page, 500);
+    await page.keyboard.up("Space");
+    await flushInputFrame(page);
+    await expect(fire).toHaveAttribute("data-firing", "false");
     const firedBySpace = Number((await readRootDiagnostics(page)).fired ?? "0");
     expect(firedBySpace).toBeGreaterThan(0);
-    await page.keyboard.up("Space");
-    await expect(fire).toHaveAttribute("data-firing", "false");
     await runClock(page, 400);
     expect((await readRootDiagnostics(page)).fired).toBe(String(firedBySpace));
 
@@ -197,17 +219,21 @@ test.describe("90秒パチンコ体験", () => {
     if (bounds === null) throw new Error("fire button has no layout box");
     await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     await page.mouse.down();
+    await flushInputFrame(page);
     await expect(fire).toHaveAttribute("data-firing", "true");
     // Mouse pointer IDs are stable at 1 for the real browser pointer used by
     // page.mouse. The down event above supplies the actual capture slot;
     // dispatching cancel exercises the production release boundary.
     await fire.dispatchEvent("pointercancel", { pointerId: 1, pointerType: "mouse" });
+    await flushInputFrame(page);
     await expect(fire).toHaveAttribute("data-firing", "false");
     await page.mouse.up();
 
     await page.mouse.down();
+    await flushInputFrame(page);
     await expect(fire).toHaveAttribute("data-firing", "true");
     await fire.dispatchEvent("lostpointercapture", { pointerId: 1, pointerType: "mouse" });
+    await flushInputFrame(page);
     await expect(fire).toHaveAttribute("data-firing", "false");
     await page.mouse.up();
   });
@@ -215,6 +241,7 @@ test.describe("90秒パチンコ体験", () => {
   test("shows the seed-77 START to reach, BONUS, attacker, RUSH judge, and final result path", async ({ page }, testInfo) => {
     test.setTimeout(60_000);
     await installDeterministicClock(page);
+    await page.setViewportSize({ width: 402, height: 874 });
     await boot(page, "/?debug=1&seed=77");
     await startGame(page);
 
@@ -232,8 +259,8 @@ test.describe("90秒パチンコ体験", () => {
     let sawJudge = false;
     // Observe the real sequence. A naturally losing reach is allowed before
     // the first jackpot; it must not be mistaken for a promised win.
-    for (let elapsed = 0; elapsed < 60_000; elapsed += 100) {
-      await runClock(page, 100);
+    for (let elapsed = 0; elapsed < 60_000; elapsed += clockStepMs) {
+      await runClock(page, clockStepMs);
       const visible = await root(page).evaluate((element) => ({
         starts: Number(element.getAttribute("data-start-entries")),
         jackpots: Number(element.getAttribute("data-jackpots")),
@@ -262,6 +289,7 @@ test.describe("90秒パチンコ体験", () => {
     });
 
     await page.mouse.up();
+    await flushInputFrame(page);
     await expect(fire).toHaveAttribute("data-firing", "false");
     await page.locator("[data-action=finish]").click();
     await advanceUntil(page, async () => (await readRootDiagnostics(page)).phase === "result", 30_000, "final result");
@@ -285,9 +313,7 @@ test.describe("90秒パチンコ体験", () => {
     await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     await page.mouse.down();
     await runClock(page, 300);
-    const beforeInterruption = await readRootDiagnostics(page);
-    const timeBeforeInterruption = numericTime(await page.locator("[data-time]").textContent());
-    expect(Number(beforeInterruption.fired ?? "0")).toBeGreaterThan(0);
+    expect(Number((await readRootDiagnostics(page)).fired ?? "0")).toBeGreaterThan(0);
 
     // This is the browser lifecycle signal used by the app when a tab loses
     // focus. It exercises the public event boundary instead of changing state.
@@ -296,11 +322,13 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator("[data-dialog=pause]")).toBeVisible();
     await expect(fire).toBeDisabled();
     await expect(fire).toHaveAttribute("data-firing", "false");
+    const pausedBaseline = await readRootDiagnostics(page);
+    const timePaused = numericTime(await page.locator("[data-time]").textContent());
 
     await runClock(page, 700);
     const whilePaused = await readRootDiagnostics(page);
-    expect(whilePaused.fired).toBe(beforeInterruption.fired);
-    expect(numericTime(await page.locator("[data-time]").textContent())).toBe(timeBeforeInterruption);
+    expect(whilePaused.fired).toBe(pausedBaseline.fired);
+    expect(numericTime(await page.locator("[data-time]").textContent())).toBe(timePaused);
     await page.mouse.up();
 
     await page.locator("[data-action=resume]").click();
@@ -308,7 +336,7 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator("[data-dialog=pause]")).toBeHidden();
     await expect(page.locator("#power")).toBeEnabled();
     await runClock(page, 1_200);
-    expect(numericTime(await page.locator("[data-time]").textContent())).toBeLessThan(timeBeforeInterruption);
+    expect(numericTime(await page.locator("[data-time]").textContent())).toBeLessThan(timePaused);
   });
 
   test("finishes reliably and restarts with a fresh zeroed session", async ({ page }) => {
@@ -354,10 +382,12 @@ test.describe("90秒パチンコ体験", () => {
           })
           .filter((button) => button.visible);
         const canvas = document.querySelector("[data-canvas-host]")?.getBoundingClientRect();
+        const reel = document.querySelector<HTMLElement>("[data-reel-display]");
         return {
           clientWidth: document.documentElement.clientWidth,
           scrollWidth: document.documentElement.scrollWidth,
           canvas: canvas === undefined ? null : { left: canvas.left, right: canvas.right, top: canvas.top, bottom: canvas.bottom },
+          lcd: reel === null ? null : { clientHeight: reel.clientHeight, scrollHeight: reel.scrollHeight },
           visibleButtons,
         };
       });
@@ -366,6 +396,8 @@ test.describe("90秒パチンコ体験", () => {
       expect(layout.canvas).not.toBeNull();
       expect(layout.canvas?.left ?? -1).toBeGreaterThanOrEqual(0);
       expect(layout.canvas?.right ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(layout.clientWidth);
+      expect(layout.lcd).not.toBeNull();
+      expect(layout.lcd?.scrollHeight ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(layout.lcd?.clientHeight ?? -1);
       for (const button of layout.visibleButtons) {
         expect(button.width).toBeGreaterThanOrEqual(44);
         expect(button.height).toBeGreaterThanOrEqual(44);
@@ -465,7 +497,7 @@ test.describe("90秒パチンコ体験", () => {
 
   test("shows a meaningful recovery surface when WebGL is disabled", async ({ page }) => {
     await page.goto("/?webgl=off");
-    await expect(page.locator("[data-error]")).toBeVisible();
+    await expect(page.locator('[role="alert"][data-error]')).toBeVisible();
     await expect(page.locator("[data-error-text]")).toHaveText("盤面を表示できませんでした。読み込み直してください。");
     await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(0);
     await expect(root(page)).toHaveAttribute("data-error", "true");
