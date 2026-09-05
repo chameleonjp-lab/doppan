@@ -1,5 +1,7 @@
 # DOPPAN ゲーム制作・プロデュース計画書
 
+> 2026-09-05：ユーザー本人からFableCatgirlPachiを参考に根本変更する指示を受けた。現行の作品方針は [PACHI_REDESIGN.md](./PACHI_REDESIGN.md)、現在地は [PRODUCTION_STATUS.md](./PRODUCTION_STATUS.md) を参照する。本書にある戻り再構成型・3球の仕様を新しいパチンコ型へ適用しない。
+
 - 文書種別: 作品方針・制作判断・ゲームデザイン
 - 初版作成日: 2026-08-09
 - 最終更新日: 2026-08-17

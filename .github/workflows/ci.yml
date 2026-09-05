@@ -93,11 +93,12 @@ jobs:
         run: npx playwright install --with-deps ${{ matrix.browser }}
       - name: Browser tests
         run: npx playwright test --project=${{ matrix.browser }}
-      - name: Upload browser failure artifacts
-        if: failure()
+      - name: Upload browser evidence
+        if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
-          name: browser-failure-${{ matrix.browser }}
+          name: browser-evidence-${{ matrix.browser }}
+          retention-days: 7
           path: |
             test-results
             playwright-report
