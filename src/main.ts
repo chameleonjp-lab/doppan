@@ -7,6 +7,7 @@ import type { PachiSessionEvent, PachiSessionSnapshot } from "./game/pachi-types
 import {
   applyPachiFeedbackEvent,
   createPachiFeedbackState,
+  getPachiChargeText,
   getPachiVisualState,
   syncPachiFeedback,
   type PachiFeedbackState,
@@ -242,7 +243,7 @@ function renderReels(snapshot: PachiSessionSnapshot): void {
     (snapshot.phase === "settling" ? "最後の玉を見届けよう" : snapshot.charge >= 5 ? "次の抽選で、大当たり" : "中央の入賞口を狙おう"));
   const detail = judging ? "結果を待とう。" : opening ? `得点口 あと${snapshot.jackpotRemaining.toFixed(1)}秒` :
     spin.stage === "revival" ? (spin.stopped[1] ? "まだ、終わらない" : "再始動！ ここから巻き返す") : spin.stage === "preview" && spin.cue === "guaranteed" ? "この保留で大当たり" :
-    spin.stage === "reach" ? "あと、ひとつ。" : spin.reveal === "miss" ? "チャージがたまる" :
+    spin.stage === "reach" ? "あと、ひとつ。" : spin.stage === "reveal" && spin.reveal === "miss" ? snapshot.charge >= 5 ? "次は大当たり" : getPachiChargeText(snapshot) :
     snapshot.pending >= 4 ? "保留満タン · 発射を休めます" : "3つそろえば大当たり";
   setText(ui.detail, detail);
   setText(ui.pendingCount, `${snapshot.pending} / 4`);
