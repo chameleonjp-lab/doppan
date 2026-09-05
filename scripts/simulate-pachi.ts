@@ -1,8 +1,9 @@
 import { PachiSession } from "../src/game/pachi-session";
+import { PACHI_POWER_PRESETS } from "../src/game/pachi-power";
 import type { PachiSessionEvent, PachiSessionSnapshot } from "../src/game/pachi-types";
 
 export const CALIBRATION_SEEDS = Array.from({ length: 64 }, (_, index) => index + 1);
-export const CALIBRATION_POWERS = [0.35, 0.5, 0.65, 0.8, 0.95] as const;
+export const CALIBRATION_POWERS = PACHI_POWER_PRESETS;
 const FRAME_MS = 100;
 const PLAY_SECONDS = 90;
 const MAX_SETTLE_SECONDS = 70;

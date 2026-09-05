@@ -128,6 +128,8 @@ export interface PachiScoreParts {
 export type PachiSpinStage = "idle" | "preview" | "spinning" | "reach" | "reveal" | "revival" | "jackpot";
 export type PachiSpinReveal = "none" | "miss" | "win" | "復活";
 export type PachiTicketCue = "normal" | "chance" | "guaranteed";
+/** PUSH is a presentation acknowledgement, not a result-changing input. */
+export type PachiPushState = "hidden" | "ready" | "accepted";
 /** A stopped reel has a digit; an unrevealed reel stays masked. */
 export type PachiDisplayDigits = readonly [number | null, number | null, number | null];
 export type PachiRushStage = "idle" | "open" | "judge";
@@ -145,6 +147,8 @@ export interface PachiSpinSnapshot {
   readonly reach: boolean;
   readonly win: boolean;
   readonly revival?: boolean;
+  /** Available only during an active reach before the fixed reveal boundary. */
+  readonly pushState: PachiPushState;
 }
 
 export interface PachiStatsSnapshot {
@@ -200,6 +204,7 @@ export type PachiSessionEventType =
   | "reclaimed"
   | "spin-start"
   | "spin-reach"
+  | "spin-push"
   | "spin-reveal"
   | "jackpot-start"
   | "attacker-entry"

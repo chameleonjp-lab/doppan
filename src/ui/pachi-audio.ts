@@ -32,6 +32,7 @@ export class PachiAudio {
       case "side-entry": this.tone(440, .06, .025); break;
       case "spin-start": this.notes([330, 392, 494], .06, .035); break;
       case "spin-reach": this.notes([587, 740, 880, 1175], .14, .055); break;
+      case "spin-push": this.tone(740, .075, .045, 0, "triangle"); break;
       case "spin-reveal": if (!event.win) this.notes([330, 247], .09, .03); break;
       case "jackpot-start": this.notes([523, 659, 784, 1047, 1319, 1568], .115, .09); break;
       case "attacker-entry": this.notes([1047, 1568], .05, .045); break;
