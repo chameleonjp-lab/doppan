@@ -102,6 +102,23 @@ function newSession(): PachiSession {
 function setText(target: HTMLElement, value: string): void {
   if (target.textContent !== value) target.textContent = value;
 }
+function setSoundControl(enabled: boolean): void {
+  ui.sound.textContent = enabled ? "音 ON" : "音 OFF";
+  ui.sound.setAttribute("aria-pressed", String(enabled));
+}
+function applyAudioResult(generation: number, enabled: boolean): void {
+  if (disposed || generation !== audioGeneration) return;
+  soundEnabled = enabled;
+  setSoundControl(enabled);
+}
+function suspendAudio(): void {
+  const generation = ++audioGeneration;
+  void audio.setSuspended(true).then((enabled) => applyAudioResult(generation, enabled));
+}
+function resumeAudio(): void {
+  const generation = ++audioGeneration;
+  void audio.setSuspended(false).then((enabled) => applyAudioResult(generation, enabled));
+}
 function listen(action: string, callback: () => void): void {
   element<HTMLButtonElement>(`[data-action=${action}]`).addEventListener("click", callback, { signal });
 }
@@ -136,7 +153,7 @@ function pauseGame(): void {
   if (!activeGame() || fatal) return;
   releaseFire();
   session.setPaused(true);
-  audio.setSuspended(true);
+  suspendAudio();
   loop.discardElapsedTime();
   if (!dialogs.help.open) openDialog(dialogs.pause);
   updateUi(session.snapshot());
@@ -147,7 +164,7 @@ function resumeGame(): void {
   releaseFire();
   loop.discardElapsedTime();
   session.setPaused(false);
-  audio.setSuspended(false);
+  resumeAudio();
   updateUi(session.snapshot());
   ui.fire.focus({ preventScroll: true });
 }
@@ -156,7 +173,7 @@ function finishGame(): void {
   releaseFire();
   closeDialogs();
   session.setPaused(false);
-  audio.setSuspended(false);
+  resumeAudio();
   session.finish();
   loop.discardElapsedTime();
   const snapshot = session.snapshot();
@@ -185,14 +202,14 @@ function startGame(): void {
   const snapshot = session.snapshot();
   for (const event of session.drainEvents()) handleEvent(event, snapshot);
   closeDialogs();
-  audio.setSuspended(false);
+  resumeAudio();
   loop.discardElapsedTime();
   updateUi(snapshot);
   ui.fire.focus({ preventScroll: true });
 }
 function showHelp(): void {
   helpOrigin = dialogs.start.open ? "start" : dialogs.result.open ? "result" : dialogs.pause.open ? "pause" : "game";
-  if (activeGame()) { releaseFire(); session.setPaused(true); audio.setSuspended(true); }
+  if (activeGame()) { releaseFire(); session.setPaused(true); suspendAudio(); }
   openDialog(dialogs.help);
 }
 function closeHelp(): void {
@@ -381,7 +398,7 @@ function fail(error: unknown): void {
   fatal = true;
   releaseFire();
   session.setPaused(true);
-  audio.setSuspended(true);
+  suspendAudio();
   closeDialogs();
   ui.loading.hidden = true;
   ui.error.hidden = false;
@@ -405,6 +422,7 @@ const loop = registerGameLoopHmrDispose((deltaMs) => {
 function dispose(): void {
   if (disposed) return;
   disposed = true;
+  ++audioGeneration;
   controller.abort();
   layoutObserver.disconnect();
   rankingRequest?.abort();
@@ -435,10 +453,8 @@ listen("share-result", () => { void share(resultText); });
 ui.sound.addEventListener("click", () => {
   const generation = ++audioGeneration;
   soundEnabled = !soundEnabled;
-  void audio.setEnabled(soundEnabled).then((enabled) => {
-    if (disposed || generation !== audioGeneration) return;
-    soundEnabled = enabled; ui.sound.textContent = enabled ? "音 ON" : "音 OFF"; ui.sound.setAttribute("aria-pressed", String(enabled));
-  });
+  setSoundControl(soundEnabled);
+  void audio.setEnabled(soundEnabled).then((enabled) => applyAudioResult(generation, enabled));
 }, { signal });
 ui.reduced.addEventListener("change", () => { reducedMotion = ui.reduced.checked; savePreference("doppan:pachi:reduced-motion", String(reducedMotion)); }, { signal });
 element<HTMLDetailsElement>(".ranking-details").addEventListener("toggle", () => { void loadRanking(); }, { signal });

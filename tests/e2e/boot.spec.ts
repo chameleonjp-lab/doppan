@@ -789,24 +789,107 @@ test.describe("90秒パチンコ体験", () => {
   test("toggles sound and honors reduced-motion preferences", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.addInitScript(() => {
+      class TestAudioParam {
+        public setValueAtTime(value: number, when: number): void { void value; void when; }
+        public linearRampToValueAtTime(value: number, when: number): void { void value; void when; }
+        public exponentialRampToValueAtTime(value: number, when: number): void { void value; void when; }
+      }
+
       class TestAudioContext {
-        public state: AudioContextState = "suspended";
+        public state = "suspended";
         public currentTime = 0;
         public readonly destination = {};
+        public starts = 0;
+        public stops = 0;
+        public resumeCalls = 0;
+        public closeCalls = 0;
+
+        public constructor() {
+          contexts.push(this);
+        }
+
+        public createOscillator(): TestOscillator {
+          return new TestOscillator(this);
+        }
+
+        public createGain(): TestGain {
+          return new TestGain();
+        }
 
         public resume(): Promise<void> {
+          this.resumeCalls += 1;
           this.state = "running";
           return Promise.resolve();
         }
 
         public close(): Promise<void> {
+          this.closeCalls += 1;
           this.state = "closed";
           return Promise.resolve();
         }
       }
+
+      class TestGain {
+        public readonly gain = new TestAudioParam();
+        public connect(node: unknown): void { void node; }
+        public disconnect(): void {}
+      }
+
+      class TestOscillator {
+        public type: OscillatorType = "sine";
+        public readonly frequency = new TestAudioParam();
+        public onended: (() => void) | null = null;
+        private stopped = false;
+
+        public constructor(private readonly owner: TestAudioContext) {}
+
+        public connect(node: unknown): void { void node; }
+
+        public start(when?: number): void {
+          void when;
+          this.owner.starts += 1;
+        }
+
+        public stop(_when?: number): void {
+          if (_when !== undefined && _when > this.owner.currentTime) return;
+          if (this.stopped) return;
+          this.stopped = true;
+          this.owner.stops += 1;
+          this.onended?.();
+        }
+
+        public disconnect(): void {}
+      }
+
+      const contexts: TestAudioContext[] = [];
+      const probe = {
+        interrupt(): void {
+          const context = contexts[contexts.length - 1];
+          if (context) context.state = "interrupted";
+        },
+        snapshot(): {
+          readonly state: string;
+          readonly starts: number;
+          readonly stops: number;
+          readonly resumeCalls: number;
+          readonly closeCalls: number;
+        } {
+          const context = contexts[contexts.length - 1];
+          if (!context) throw new Error("AudioContext was not created");
+          return {
+            state: context.state,
+            starts: context.starts,
+            stops: context.stops,
+            resumeCalls: context.resumeCalls,
+            closeCalls: context.closeCalls,
+          };
+        },
+      };
+      Object.defineProperty(window, "__doppanAudioProbe", { configurable: true, value: probe });
       Object.defineProperty(window, "AudioContext", { configurable: true, value: TestAudioContext });
     });
-    await boot(page);
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=77");
     await startGame(page);
 
     // Reduced motion keeps the same semantic focus and reward labels; only
@@ -819,14 +902,94 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator("[data-mouth-label=attacker]")).toHaveAttribute("data-pocket-state", "closed");
     await expectMouthLayoutInViewport(page);
 
+    const readAudio = () => page.evaluate(() => {
+      const probe = (window as Window & {
+        __doppanAudioProbe?: {
+          snapshot: () => {
+            readonly state: string;
+            readonly starts: number;
+            readonly stops: number;
+            readonly resumeCalls: number;
+            readonly closeCalls: number;
+          };
+        };
+      }).__doppanAudioProbe;
+      if (!probe) throw new Error("Audio probe was not installed");
+      return probe.snapshot();
+    });
+
     const sound = page.locator("[data-action=sound]");
     await expect(sound).toHaveAttribute("aria-pressed", "false");
     await sound.click();
     await expect(sound).toHaveText("音 ON");
     await expect(sound).toHaveAttribute("aria-pressed", "true");
+
+    const enabled = await readAudio();
+    expect(enabled.state).toBe("running");
+    expect(enabled.resumeCalls).toBeGreaterThanOrEqual(1);
+
+    // Exercise the real firing control and event path. The fake graph proves
+    // that a tone was scheduled; it cannot prove speaker output or iOS audio.
+    await beginPointerFire(page);
+    await runClock(page, clockStepMs);
+    const firstTone = await readAudio();
+    expect(firstTone.starts).toBeGreaterThan(enabled.starts);
+    await page.mouse.up();
+    await flushInputFrame(page);
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+
+    // A tab interruption must stop an already scheduled tone and release the
+    // firing source before the pause dialog is shown.
+    const beforePause = await readAudio();
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await expect(root(page)).toHaveAttribute("data-paused", "true");
+    await expect(page.locator("[data-dialog=pause]")).toBeVisible();
+    await expect(page.locator(fireSelector)).toBeDisabled();
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+    const paused = await readAudio();
+    expect(paused.stops).toBeGreaterThan(beforePause.stops);
+    await page.mouse.up();
+
+    // Simulate only the browser audio interruption; the game's paused state
+    // remains controlled by the real blur lifecycle event above.
+    await page.evaluate(() => {
+      const probe = (window as Window & {
+        __doppanAudioProbe?: { interrupt: () => void };
+      }).__doppanAudioProbe;
+      if (!probe) throw new Error("Audio probe was not installed");
+      probe.interrupt();
+    });
+    expect((await readAudio()).state).toBe("interrupted");
+
+    const resumeCallsBefore = paused.resumeCalls;
+    await page.locator("[data-action=resume]").click();
+    await expect(root(page)).toHaveAttribute("data-paused", "false");
+    await expect(page.locator("[data-dialog=pause]")).toBeHidden();
+    await expect.poll(async () => (await readAudio()).resumeCalls).toBeGreaterThan(resumeCallsBefore);
+    await expect.poll(async () => (await readAudio()).state).toBe("running");
+
+    // The next real firing event must schedule sound after recovery.
+    const resumed = await readAudio();
+    await beginPointerFire(page);
+    await runClock(page, clockStepMs);
+    const secondTone = await readAudio();
+    expect(secondTone.starts).toBeGreaterThan(resumed.starts);
+    await page.mouse.up();
+    await flushInputFrame(page);
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+
     await sound.click();
     await expect(sound).toHaveText("音 OFF");
     await expect(sound).toHaveAttribute("aria-pressed", "false");
+    const disabled = await readAudio();
+    expect(disabled.starts).toBe(secondTone.starts);
+    await beginPointerFire(page);
+    await runClock(page, clockStepMs);
+    const silent = await readAudio();
+    expect(silent.starts).toBe(disabled.starts);
+    await page.mouse.up();
+    await flushInputFrame(page);
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
 
     await page.locator("[data-action=help]").click();
     await expect(page.locator("[data-dialog=help]")).toBeVisible();

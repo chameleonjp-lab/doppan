@@ -1,27 +1,50 @@
 import type { PachiSessionEvent } from "../game/pachi-types";
 
+type AudioContextFactory = () => AudioContext;
+
 /** Short original synthesised cues. No downloads, autoplay, or audio-owned timers. */
 export class PachiAudio {
   private context: AudioContext | null = null;
   private enabled = false;
   private suspended = false;
   private disposed = false;
+  private intentGeneration = 0;
   private voices = new Set<OscillatorNode>();
 
+  public constructor(private readonly createContext: AudioContextFactory = () => new AudioContext()) {}
+
   public async setEnabled(enabled: boolean): Promise<boolean> {
+    const intent = ++this.intentGeneration;
     if (this.disposed) return false;
     this.enabled = enabled;
     if (!enabled) { this.silence(); return false; }
+
+    let context = this.context;
     try {
-      this.context ??= new AudioContext();
-      if (!this.suspended) await this.context.resume();
-      return true;
-    } catch { this.enabled = false; return false; }
+      // Creating an AudioContext is deliberately limited to an explicit ON
+      // action. Lifecycle resume must reuse this context and never create one.
+      context ??= this.createContext();
+      this.context = context;
+    } catch {
+      if (this.isCurrent(intent)) this.enabled = false;
+      return false;
+    }
+    if (this.suspended) return this.isCurrent(intent) && this.enabled;
+    if (context.state === "running") return this.isCurrent(intent) && this.enabled;
+    return this.resume(context, intent);
   }
 
-  public setSuspended(suspended: boolean): void {
+  public setSuspended(suspended: boolean): Promise<boolean> {
+    const intent = ++this.intentGeneration;
+    if (this.disposed) return Promise.resolve(false);
     this.suspended = suspended;
-    if (suspended) this.silence();
+    if (suspended) {
+      this.silence();
+      return Promise.resolve(this.enabled);
+    }
+    if (!this.enabled || !this.context) return Promise.resolve(false);
+    if (this.context.state === "running") return Promise.resolve(true);
+    return this.resume(this.context, intent);
   }
 
   public play(event: PachiSessionEvent): void {
@@ -44,11 +67,39 @@ export class PachiAudio {
   }
 
   public destroy(): void {
+    ++this.intentGeneration;
     this.disposed = true;
     this.enabled = false;
+    this.suspended = true;
     this.silence();
-    if (this.context) void this.context.close().catch(() => undefined);
+    const context = this.context;
     this.context = null;
+    if (context) void context.close().catch(() => undefined);
+  }
+
+  private isCurrent(intent: number): boolean {
+    return !this.disposed && this.intentGeneration === intent;
+  }
+
+  private resume(context: AudioContext, intent: number): Promise<boolean> {
+    if (!this.isCurrent(intent) || !this.enabled || this.suspended || this.context !== context) return Promise.resolve(false);
+    let operation: Promise<void>;
+    try {
+      operation = context.resume();
+    } catch {
+      if (this.isCurrent(intent)) { this.enabled = false; this.silence(); }
+      return Promise.resolve(false);
+    }
+    return Promise.resolve(operation).then(
+      () => {
+        if (!this.isCurrent(intent) || !this.enabled || this.suspended || this.context !== context) return false;
+        return true;
+      },
+      () => {
+        if (this.isCurrent(intent)) { this.enabled = false; this.silence(); }
+        return false;
+      },
+    );
   }
 
   private notes(frequencies: readonly number[], gap: number, volume: number): void {
@@ -70,7 +121,11 @@ export class PachiAudio {
       oscillator.connect(gain);
       gain.connect(context.destination);
       this.voices.add(oscillator);
-      oscillator.onended = () => { this.voices.delete(oscillator); oscillator.disconnect(); gain.disconnect(); };
+      oscillator.onended = () => {
+        this.voices.delete(oscillator);
+        try { oscillator.disconnect(); } catch { /* Already disconnected. */ }
+        try { gain.disconnect(); } catch { /* Already disconnected. */ }
+      };
       oscillator.start(at);
       oscillator.stop(at + duration + .01);
     } catch { /* Audio must never interrupt the score or the physical world. */ }
