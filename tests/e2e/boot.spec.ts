@@ -390,118 +390,106 @@ test.describe("90秒パチンコ体験", () => {
     expect(Number(final.attackerEntries ?? "0")).toBeGreaterThan(0);
   });
 
-  test("accepts PUSH through real pointer and native keyboard activation without firing", async ({ page }, testInfo) => {
-    test.setTimeout(120_000);
+  test("accepts PUSH through a real pointer with pause and disabled safety", async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
     await page.setViewportSize({ width: 402, height: 874 });
-    const keyboardPage = await page.context().newPage();
-    const keyboardErrors: string[] = [];
-    pageErrors.set(keyboardPage, keyboardErrors);
-    keyboardPage.on("pageerror", (error) => keyboardErrors.push(error.message));
-    await keyboardPage.setViewportSize({ width: 402, height: 874 });
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=77");
+    await startGame(page);
 
-    try {
-      await installDeterministicClock(page);
-      await installDeterministicClock(keyboardPage);
-      const url = "/?debug=1&seed=77";
-      await Promise.all([boot(page, url), boot(keyboardPage, url)]);
-      await Promise.all([startGame(page), startGame(keyboardPage)]);
+    const pointerPush = page.locator("[data-action=push]");
+    await expect(pointerPush).toBeDisabled();
+    await expect(pointerPush).toHaveAttribute("data-push-state", "hidden");
+    await beginPointerFire(page);
+    await waitForPushReady(page);
 
-      const pointerPush = page.locator("[data-action=push]");
-      const keyboardPush = keyboardPage.locator("[data-action=push]");
-      await expect(pointerPush).toBeDisabled();
-      await expect(pointerPush).toHaveAttribute("data-push-state", "hidden");
-      await expect(keyboardPush).toBeDisabled();
-      await expect(keyboardPush).toHaveAttribute("data-push-state", "hidden");
+    await page.mouse.up();
+    await flushInputFrame(page);
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
 
-      await beginPointerFire(page);
-      await beginPointerFire(keyboardPage);
-      await expect(keyboardPage.locator(fireSelector)).toHaveAttribute("data-firing", "true");
-      await Promise.all([waitForPushReady(page), waitForPushReady(keyboardPage)]);
+    // The reach window remains actionable across a real pause, while its
+    // timer and pushState stay fixed under the bounded fake-clock steps.
+    const readyTime = await page.locator("[data-time]").textContent();
+    await page.locator("[data-action=pause]").click();
+    await expect(root(page)).toHaveAttribute("data-paused", "true");
+    await expect(pointerPush).toBeDisabled();
+    await expect(pointerPush).toHaveAttribute("data-push-state", "ready");
+    const paused = await readRootDiagnostics(page);
+    await runClock(page, 1_000);
+    expect(await readRootDiagnostics(page)).toMatchObject({
+      paused: "true",
+      pushState: "ready",
+      fired: paused.fired,
+      jackpots: paused.jackpots,
+    });
+    expect(await page.locator("[data-time]").textContent()).toBe(readyTime);
+    await page.locator("[data-action=resume]").click();
+    await expect(root(page)).toHaveAttribute("data-paused", "false");
+    await expect(pointerPush).toBeEnabled();
 
-      // Release the first pointer before its actual pointer click. The second
-      // page keeps its pointer held so Space must not steal that firing source.
-      await page.mouse.up();
-      await flushInputFrame(page);
-      await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+    const pointerBefore = await readRootDiagnostics(page);
+    const pointerScoreBefore = await page.locator("[data-score]").textContent();
+    await pointerPush.click();
+    const pointerAccepted = await readRootDiagnostics(page);
+    expect(pointerAccepted).toMatchObject({
+      pushState: "accepted",
+      spinStage: "reach",
+      fired: pointerBefore.fired,
+      jackpots: pointerBefore.jackpots,
+    });
+    await expect(pointerPush).toBeDisabled();
+    await expect(pointerPush).toHaveAttribute("data-push-state", "accepted");
+    expect(await page.locator("[data-score]").textContent()).toBe(pointerScoreBefore);
+    await flushInputFrame(page);
+    await expect(pointerPush).toHaveAttribute("data-push-state", "accepted");
+    await screenshot(page, testInfo, "402x874-push-accepted");
 
-      // The reach window remains actionable across a real pause, while its
-      // timer and pushState stay fixed under the bounded fake-clock steps.
-      const readyTime = await page.locator("[data-time]").textContent();
-      await page.locator("[data-action=pause]").click();
-      await expect(root(page)).toHaveAttribute("data-paused", "true");
-      await expect(page.locator("[data-action=push]")).toBeDisabled();
-      await expect(page.locator("[data-action=push]")).toHaveAttribute("data-push-state", "ready");
-      const paused = await readRootDiagnostics(page);
-      await runClock(page, 1_000);
-      expect(await readRootDiagnostics(page)).toMatchObject({
-        paused: "true",
-        pushState: "ready",
-        fired: paused.fired,
-        jackpots: paused.jackpots,
-      });
-      expect(await page.locator("[data-time]").textContent()).toBe(readyTime);
-      await page.locator("[data-action=resume]").click();
-      await expect(root(page)).toHaveAttribute("data-paused", "false");
-      await expect(pointerPush).toBeEnabled();
+    // A disabled native button must stay inert under real repeated clicks and
+    // keyboard activation; no force-click or synthetic event is used.
+    const pointerBounds = await pointerPush.boundingBox();
+    if (pointerBounds === null) throw new Error("PUSH button has no layout box");
+    await page.mouse.click(pointerBounds.x + pointerBounds.width / 2, pointerBounds.y + pointerBounds.height / 2);
+    await flushInputFrame(page);
+    expect(await readRootDiagnostics(page)).toMatchObject({ pushState: "accepted" });
+    await page.keyboard.press("Enter");
+    await flushInputFrame(page);
+    expect(await readRootDiagnostics(page)).toMatchObject({ pushState: "accepted" });
+  });
 
-      const pointerBefore = await readRootDiagnostics(page);
-      const pointerScoreBefore = await page.locator("[data-score]").textContent();
-      await pointerPush.click();
-      const pointerAccepted = await readRootDiagnostics(page);
-      expect(pointerAccepted).toMatchObject({
-        pushState: "accepted",
-        spinStage: "reach",
-        fired: pointerBefore.fired,
-        jackpots: pointerBefore.jackpots,
-      });
-      await expect(pointerPush).toBeDisabled();
-      await expect(pointerPush).toHaveAttribute("data-push-state", "accepted");
-      expect(await page.locator("[data-score]").textContent()).toBe(pointerScoreBefore);
-      await flushInputFrame(page);
-      await expect(pointerPush).toHaveAttribute("data-push-state", "accepted");
-      await screenshot(page, testInfo, "402x874-push-accepted");
+  test("accepts PUSH with Space while a real pointer hold remains active", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 402, height: 874 });
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=77");
+    await startGame(page);
 
-      // A disabled native button must stay inert under a real repeated click.
-      const pointerBounds = await pointerPush.boundingBox();
-      if (pointerBounds === null) throw new Error("PUSH button has no layout box");
-      await page.mouse.click(pointerBounds.x + pointerBounds.width / 2, pointerBounds.y + pointerBounds.height / 2);
-      await flushInputFrame(page);
-      expect(await readRootDiagnostics(page)).toMatchObject({
-        pushState: "accepted",
-      });
-      await page.keyboard.press("Enter");
-      await flushInputFrame(page);
-      expect(await readRootDiagnostics(page)).toMatchObject({
-        pushState: "accepted",
-      });
+    const fire = page.locator(fireSelector);
+    const push = page.locator("[data-action=push]");
+    await expect(push).toBeDisabled();
+    await expect(push).toHaveAttribute("data-push-state", "hidden");
+    await beginPointerFire(page);
+    await waitForPushReady(page);
 
-      // Space activates the native PUSH control while the original pointer is
-      // still held. No global firing source may be added or removed.
-      const keyboardBefore = await readRootDiagnostics(keyboardPage);
-      await keyboardPush.focus();
-      await keyboardPage.keyboard.press("Space");
-      const keyboardAccepted = await readRootDiagnostics(keyboardPage);
-      expect(keyboardAccepted).toMatchObject({
-        pushState: "accepted",
-        spinStage: "reach",
-        fired: keyboardBefore.fired,
-        jackpots: keyboardBefore.jackpots,
-      });
-      await flushInputFrame(keyboardPage);
-      await expect(keyboardPage.locator(fireSelector)).toHaveAttribute("data-firing", "true");
-      await expect(keyboardPush).toBeDisabled();
-      await expect(keyboardPush).toHaveAttribute("data-push-state", "accepted");
-      await keyboardPage.mouse.up();
-      await flushInputFrame(keyboardPage);
-      await expect(keyboardPage.locator(fireSelector)).toHaveAttribute("data-firing", "false");
-      expect(await readRootDiagnostics(keyboardPage)).toMatchObject({
-        pushState: "accepted",
-      });
-      await expect(keyboardPage.locator(fireSelector)).toHaveAttribute("data-firing", "false");
-    } finally {
-      expect(keyboardErrors).toEqual([]);
-      if (!keyboardPage.isClosed()) await keyboardPage.close();
-    }
+    // Space is native PUSH activation here, not global fire. The original
+    // pointer source must remain active until pointerup below.
+    const before = await readRootDiagnostics(page);
+    await push.focus();
+    await page.keyboard.press("Space");
+    const accepted = await readRootDiagnostics(page);
+    expect(accepted).toMatchObject({
+      pushState: "accepted",
+      spinStage: "reach",
+      fired: before.fired,
+      jackpots: before.jackpots,
+    });
+    await flushInputFrame(page);
+    await expect(fire).toHaveAttribute("data-firing", "true");
+    await expect(push).toBeDisabled();
+    await expect(push).toHaveAttribute("data-push-state", "accepted");
+    await page.mouse.up();
+    await flushInputFrame(page);
+    await expect(fire).toHaveAttribute("data-firing", "false");
+    await expect(push).toHaveAttribute("data-push-state", "accepted");
   });
 
   test("accepts a ready PUSH with Enter and releases Space after focus moves", async ({ page }) => {
