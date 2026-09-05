@@ -2,7 +2,7 @@
   "name": "doppan",
   "version": "0.1.0",
   "private": true,
-  "description": "DOPPAN G3 / GA vertical-slice pinball prototype",
+  "description": "DOPPAN 90-second pachinko score attack with physical balls and finite RUSH bonuses",
   "type": "module",
   "packageManager": "npm@11.17.0",
   "engines": {
@@ -17,6 +17,7 @@
     "lint": "eslint src tests vite.config.ts vitest.config.ts playwright.config.ts && node scripts/check-source-boundaries.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "calibrate:pachi": "vitest run --config scripts/pachi-calibration.config.ts",
     "test:browser": "playwright test",
     "size": "node scripts/check-dist-size.mjs",
     "quality": "npm run typecheck && npm run lint && npm run test && npm run build && npm run size"

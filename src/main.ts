@@ -1,696 +1,436 @@
 import "./styles.css";
-import { BUILD_INFO, formatBuildInfoValue } from "./build-info";
-import { registerGameLoopHmrDispose, type GameLoop } from "./runtime";
-import { createPixiRuntime, type PixiRuntime } from "./rendering/pixi-app";
-import { bindPrototypeInput } from "./ui/prototype-input-bindings";
-import {
-  GaSession,
-  type GaSessionDiagnostics,
-  type GaSessionSnapshot,
-} from "./game";
-import {
-  GRAYBOX_PATH_LENGTH,
-  formatGrayboxReturnRouteLabel,
-  formatGrayboxTargetLabel,
-  type GrayboxAlphaSnapshot,
-} from "./graybox";
-import type { PhysicsStepHz } from "./loop/fixed-step-clock";
+import { BUILD_INFO } from "./build-info";
+import { registerGameLoopHmrDispose } from "./runtime";
+import { PachiSession } from "./game/pachi-session";
+import type { PachiSessionEvent, PachiSessionSnapshot } from "./game/pachi-types";
+import { createPachiRenderer, PACHI_SCREEN_RECT, type PachiRenderer } from "./rendering/pachi-renderer";
+import { PachiAudio } from "./ui/pachi-audio";
+import { cleanPlayerName, gameUrl, readPreference, savePreference, shareGame, readHistoricalRanking, PACHI_RULE_VERSION } from "./ui/pachi-platform";
 
-function requiredElement<T extends Element>(selector: string): T {
-  const element = document.querySelector<T>(selector);
-  if (!element) {
-    throw new Error(`DOPPAN boot markup is missing ${selector}`);
-  }
-  return element;
+function element<T extends Element>(selector: string): T {
+  const found = document.querySelector<T>(selector);
+  if (!found) throw new Error(`Missing game element: ${selector}`);
+  return found;
 }
-
-const root = requiredElement<HTMLElement>("[data-app-root]");
-const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
-root.dataset.debug = String(debugMode);
-const pauseButton = requiredElement<HTMLButtonElement>("[data-action='toggle-pause']");
-const resetButton = requiredElement<HTMLButtonElement>("[data-action='reset-prototype']");
-const hzSelect = requiredElement<HTMLSelectElement>("[data-physics-hz]");
-const status = requiredElement<HTMLElement>("[data-status]");
-const copyReportButton = requiredElement<HTMLButtonElement>("[data-action='copy-report']");
-const webglError = requiredElement<HTMLElement>("[data-webgl-error]");
-const prototypeError = requiredElement<HTMLElement>("[data-prototype-error]");
-const canvasHost = requiredElement<HTMLElement>("[data-canvas-host]");
-const chargeProgress = requiredElement<HTMLProgressElement>("[data-launch-charge]");
-const reportOutput = requiredElement<HTMLElement>("[data-playtest-report]");
-const startGameButton = requiredElement<HTMLButtonElement>("[data-action='start-game']");
-const restartGameButton = requiredElement<HTMLButtonElement>("[data-action='restart-game']");
-const startOverlay = requiredElement<HTMLElement>("[data-game-overlay='start']");
-const resultOverlay = requiredElement<HTMLElement>("[data-game-overlay='result']");
-const resultScore = requiredElement<HTMLElement>("[data-result='score']");
-const resultProgress = requiredElement<HTMLElement>("[data-result='progress']");
-const resultClimax = requiredElement<HTMLElement>("[data-result='climax']");
-const playerNameInput = requiredElement<HTMLInputElement>("#player-name");
-const nameStatus = requiredElement<HTMLElement>("[data-name-status]");
-const resultPlayer = requiredElement<HTMLElement>("[data-result='player']");
-const resultShareText = requiredElement<HTMLTextAreaElement>("[data-result='share-text']");
-const shareStatus = requiredElement<HTMLElement>("[data-share-status]");
-const rankingList = requiredElement<HTMLOListElement>("[data-ranking-list]");
-const rankingStatus = requiredElement<HTMLElement>("[data-ranking-status]");
-const homeShareButton = requiredElement<HTMLButtonElement>("[data-action='share-home']");
-const startShareButton = requiredElement<HTMLButtonElement>("[data-action='share-start']");
-const resultShareButton = requiredElement<HTMLButtonElement>("[data-action='share-result']");
-const grayboxElements = {
-  target: requiredElement<HTMLElement>("[data-graybox='target']"),
-  returnRoute: requiredElement<HTMLElement>("[data-graybox='return']"),
-  progress: requiredElement<HTMLElement>("[data-graybox='progress']"),
-  score: requiredElement<HTMLElement>("[data-graybox='score']"),
-  combo: requiredElement<HTMLElement>("[data-graybox='combo']"),
-  event: requiredElement<HTMLElement>("[data-graybox='event']"),
+const root = element<HTMLElement>("[data-app-root]");
+const ui = {
+  score: element<HTMLElement>("[data-score]"), time: element<HTMLElement>("[data-time]"), stock: element<HTMLElement>("[data-stock]"),
+  event: element<HTMLElement>("[data-event]"), power: element<HTMLInputElement>("#power"), powerValue: element<HTMLOutputElement>("[data-power-value]"),
+  fire: element<HTMLButtonElement>("[data-action=fire]"), pause: element<HTMLButtonElement>("[data-action=pause]"), finish: element<HTMLButtonElement>("[data-action=finish]"),
+  start: element<HTMLButtonElement>("[data-action=start]"), name: element<HTMLInputElement>("#player-name"), nameStatus: element<HTMLElement>("[data-name-status]"),
+  display: element<HTMLElement>("[data-reel-display]"), mode: element<HTMLElement>("[data-mode]"), title: element<HTMLElement>("[data-spin-title]"), detail: element<HTMLElement>("[data-spin-detail]"),
+  reels: [...document.querySelectorAll<HTMLElement>("[data-reel]")], pending: element<HTMLElement>("[data-pending]"), pendingCount: element<HTMLElement>("[data-pending-count]"),
+  lights: [...document.querySelectorAll<HTMLElement>(".pending-lights i")], charge: element<HTMLProgressElement>("[data-charge]"), chargeLabel: element<HTMLElement>("[data-charge-label]"),
+  banner: element<HTMLElement>("[data-win-banner]"), winNote: element<HTMLElement>("[data-win-note]"), loading: element<HTMLElement>("[data-loading]"),
+  error: element<HTMLElement>("[data-error]"), errorText: element<HTMLElement>("[data-error-text]"), host: element<HTMLElement>("[data-canvas-host]"),
+  sound: element<HTMLButtonElement>("[data-action=sound]"), reduced: element<HTMLInputElement>("[data-reduced-motion]"),
 };
-const gaElements = {
-  ball: requiredElement<HTMLElement>("[data-ga='ball']"),
-  remaining: requiredElement<HTMLElement>("[data-ga='remaining']"),
-  phase: requiredElement<HTMLElement>("[data-ga='phase']"),
-  result: requiredElement<HTMLElement>("[data-ga='result']"),
+const dialogs = {
+  start: element<HTMLDialogElement>("[data-dialog=start]"), help: element<HTMLDialogElement>("[data-dialog=help]"),
+  pause: element<HTMLDialogElement>("[data-dialog=pause]"), result: element<HTMLDialogElement>("[data-dialog=result]"),
 };
-const inputButtons = [...root.querySelectorAll<HTMLButtonElement>("button[data-input-action]")];
-const diagnosticsElements = {
-  hz: requiredElement<HTMLElement>("[data-diagnostic='hz']"),
-  step: requiredElement<HTMLElement>("[data-diagnostic='step']"),
-  queue: requiredElement<HTMLElement>("[data-diagnostic='queue']"),
-  resources: requiredElement<HTMLElement>("[data-diagnostic='resources']"),
-  dropped: requiredElement<HTMLElement>("[data-diagnostic='dropped']"),
-  integrity: requiredElement<HTMLElement>("[data-diagnostic='integrity']"),
-  shot: requiredElement<HTMLElement>("[data-diagnostic='shot']"),
-  speed: requiredElement<HTMLElement>("[data-diagnostic='speed']"),
-  physicsLatency: requiredElement<HTMLElement>("[data-diagnostic='physics-latency']"),
-  drawLatency: requiredElement<HTMLElement>("[data-diagnostic='draw-latency']"),
-};
-
-let runtime: PixiRuntime | null = null;
-const lifecycleController = new AbortController();
+const controller = new AbortController();
+const signal = controller.signal;
+const audio = new PachiAudio();
+let renderer: PachiRenderer | null = null;
 let disposed = false;
-let runtimeGeneration = 0;
-let lastDiagnosticsAt = -Infinity;
-let gameStarted = false;
-let playerName = readPlayerName();
-let resultPlatformLoaded = false;
+let fatal = false;
+let session = newSession();
+let playerName = cleanPlayerName(readPreference("doppan.player-name") ?? "");
+let soundEnabled = false;
+let reducedMotion = readPreference("doppan:pachi:reduced-motion") === "true" || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let pointerId: number | null = null;
+let keyboardFiring = false;
+let resultShown = false;
+let displayedTicket: number | null = null;
+let lastDigits: readonly number[] = [7, 7, 7];
+let helpOrigin: "start" | "game" | "pause" | "result" = "start";
+let rankingRequest: AbortController | null = null;
+let rankingLoaded = false;
+let resultText = "";
+let audioGeneration = 0;
+const machine = element<HTMLElement>("[data-machine]");
+const playArea = element<HTMLElement>(".play-area");
+const fitMachine = (): void => {
+  const width = Math.min(playArea.clientWidth, playArea.clientHeight * 720 / 900);
+  machine.style.width = `${width}px`;
+  machine.style.height = `${width * 900 / 720}px`;
+};
+const layoutObserver = new ResizeObserver(fitMachine);
+layoutObserver.observe(playArea);
+fitMachine();
+const debug = new URLSearchParams(window.location.search).get("debug") === "1";
+root.dataset.buildSha = BUILD_INFO.sha;
+root.dataset.ruleVersion = PACHI_RULE_VERSION;
+ui.name.value = playerName;
+ui.reduced.checked = reducedMotion;
 
-const SUPABASE_URL = "https://mlpnjgezrnhdxsxolyzj.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_drzcy0v97knU6FgjqSgBHw_0A9XPdFM";
-const GAME_SLUG = "doppan";
-const CLIENT_VERSION = "doppan-2026-08-31-platform";
-playerNameInput.value = playerName;
-
-const WEBGL_ERROR_GUIDE =
-  "WebGL描画を開始または継続できませんでした。ページを再読み込みするか、ブラウザのハードウェアアクセラレーションを確認してください。";
-const PROTOTYPE_ERROR_GUIDE =
-  "入力または物理の安全条件を保てなかったため停止しました。盤面をリセットするか、再読み込みして診断情報を確認してください。";
-
-const session = new GaSession({
-  physicsStepHz: parsePhysicsHz(hzSelect.value),
-  onFatalError: showPrototypeError,
-});
-
-function setInputDisabled(disabled: boolean): void {
-  for (const button of inputButtons) {
-    button.disabled = disabled;
-  }
+function newSession(): PachiSession {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  const params = new URLSearchParams(window.location.search);
+  const debugSeed = Number(params.get("seed"));
+  const seed = params.get("debug") === "1" && params.has("seed") && Number.isSafeInteger(debugSeed) ? debugSeed : (values[0] ?? 1);
+  return new PachiSession({ seed });
 }
 
-setInputDisabled(true);
-
-function updateResultOverlay(snapshot: GaSessionSnapshot): void {
-  const isResult = gameStarted && snapshot.phase === "result";
-  startOverlay.hidden = gameStarted || session.gameState.isFatalRecovery;
-  resultOverlay.hidden = !isResult;
-  const score = snapshot.result?.score ?? snapshot.graybox.score;
-  const progress = snapshot.result?.progress ?? snapshot.graybox.progress;
-  resultScore.textContent = String(score);
-  resultProgress.textContent =
-    String(Math.round(progress * GRAYBOX_PATH_LENGTH)) + " / " + String(GRAYBOX_PATH_LENGTH);
-  resultClimax.textContent =
-    snapshot.result?.climaxState === "active" ? "クライマックス到達" : "クライマックス未到達";
-  if (isResult && !resultPlatformLoaded) {
-    resultPlatformLoaded = true;
-    void renderResultPlatform(Number(score));
-  }
-  if (!isResult) resultPlatformLoaded = false;
+function setText(target: HTMLElement, value: string): void {
+  if (target.textContent !== value) target.textContent = value;
 }
-
-function readPlayerName(): string {
-  try { return cleanName(localStorage.getItem("doppan.player-name") ?? ""); } catch { return ""; }
+function listen(action: string, callback: () => void): void {
+  element<HTMLButtonElement>(`[data-action=${action}]`).addEventListener("click", callback, { signal });
 }
-
-function cleanName(value: string): string {
-  return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 20);
+function closeDialogs(): void { for (const dialog of Object.values(dialogs)) if (dialog.open) dialog.close(); }
+function openDialog(dialog: HTMLDialogElement): void { closeDialogs(); if (!dialog.open) dialog.showModal(); }
+function activeGame(snapshot = session.snapshot()): boolean { return snapshot.phase === "playing" || snapshot.phase === "settling"; }
+function canFire(snapshot: PachiSessionSnapshot): boolean {
+  return !fatal && renderer !== null && !snapshot.paused && snapshot.ballsRemaining > 0 &&
+    (snapshot.phase === "playing" || (snapshot.phase === "settling" && snapshot.jackpotRemaining > 0));
 }
-
-function currentGameUrl(): string { return new URL(window.location.href).toString().split("#")[0] ?? window.location.href; }
-function homeShareText(): string { return `DOPPAN「つなぎ直す」で3球のルートをつなごう！\n${currentGameUrl()}\n#DOPPAN #ミニゲーム`; }
-function resultShareMessage(finalScore: number, progress: number, climax: boolean): string {
-  return `${playerName}さんのDOPPAN結果：${finalScore}点、進行${Math.round(progress * GRAYBOX_PATH_LENGTH)}/${GRAYBOX_PATH_LENGTH}！${climax ? "クライマックス到達！" : "ルートをつなぎ直しました。"}\n${currentGameUrl()}\n#DOPPAN #ミニゲーム`;
+function releaseFire(): void {
+  const captured = pointerId;
+  pointerId = null;
+  keyboardFiring = false;
+  session.setFiring(false);
+  if (captured !== null && ui.fire.hasPointerCapture(captured)) ui.fire.releasePointerCapture(captured);
+  ui.fire.dataset.firing = "false";
 }
+function syncFire(): void { session.setFiring((pointerId !== null || keyboardFiring) && canFire(session.snapshot())); }
 
-async function shareOrCopy(text: string, statusElement: HTMLElement, textElement?: HTMLTextAreaElement): Promise<void> {
-  statusElement.textContent = "";
-  if (navigator.share) {
-    try { await navigator.share({ title: "DOPPAN", text, url: currentGameUrl() }); statusElement.textContent = "共有しました。"; return; }
-    catch (error) { if (error instanceof DOMException && error.name === "AbortError") return; }
-  }
-  try { await navigator.clipboard.writeText(text); statusElement.textContent = "シェア文をコピーしました。"; }
-  catch { if (textElement) { textElement.focus(); textElement.select(); } statusElement.textContent = "シェア文を選択しました。コピーしてご利用ください。"; }
+function pauseGame(): void {
+  if (!activeGame() || fatal) return;
+  releaseFire();
+  session.setPaused(true);
+  audio.setSuspended(true);
+  loop.discardElapsedTime();
+  if (!dialogs.help.open) openDialog(dialogs.pause);
+  updateUi(session.snapshot());
 }
-
-async function callRankingRpc(name: string, payload: Record<string, unknown>): Promise<unknown> {
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, { method: "POST", headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  const text = await response.text();
-  const data: unknown = text ? JSON.parse(text) : null;
-  if (!response.ok) throw new Error(`${name}: ${response.status}`);
-  return data;
+function resumeGame(): void {
+  if (!activeGame() || fatal) return;
+  closeDialogs();
+  releaseFire();
+  loop.discardElapsedTime();
+  session.setPaused(false);
+  audio.setSuspended(false);
+  updateUi(session.snapshot());
+  ui.fire.focus({ preventScroll: true });
 }
-
-function rankingRows(data: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(data) ? data.slice(0, 10) as Array<Record<string, unknown>> : [];
+function finishGame(): void {
+  element<HTMLElement>("[data-result-end-note]").textContent = "ここまでの保留を精算しました。";
+  releaseFire();
+  closeDialogs();
+  session.setPaused(false);
+  audio.setSuspended(false);
+  session.finish();
+  loop.discardElapsedTime();
+  updateUi(session.snapshot());
 }
-
-function rankingDisplayName(value: unknown): string {
-  if (typeof value !== "string") {
-    return "ななし";
-  }
-  const normalized = value.trim();
-  return normalized || "ななし";
-}
-
-function rankingScore(value: unknown): number {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : 0;
-  }
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
-
-async function renderResultPlatform(finalScore: number): Promise<void> {
-  const snapshot = session.snapshot();
-  const progress = snapshot.result?.progress ?? snapshot.graybox.progress;
-  const climax = snapshot.result?.climaxState === "active";
-  const text = resultShareMessage(finalScore, progress, climax);
-  resultPlayer.textContent = `${playerName}さんの結果`;
-  resultShareText.value = text;
-  rankingList.innerHTML = "<li>ランキングを読み込み中…</li>";
-  rankingStatus.textContent = "ランキングを更新中…";
-  try {
-    await callRankingRpc("submit_score", { p_display_name: playerName, p_game_slug: GAME_SLUG, p_score: Math.trunc(finalScore), p_client_version: CLIENT_VERSION });
-  } catch { rankingStatus.textContent = "今回のスコアを送信できませんでした。ランキングを表示します。"; }
-  try {
-    const rows = rankingRows(await callRankingRpc("get_best_score_ranking", { p_game_slug: GAME_SLUG, p_limit: 10 }));
-    rankingList.innerHTML = rows.length ? "" : "<li>まだランキングがありません。</li>";
-    for (const row of rows) {
-      const item = document.createElement("li");
-      const displayName = rankingDisplayName(row.display_name ?? row.player_name);
-      const score = rankingScore(row.score ?? row.best_score);
-      item.textContent = `${displayName}：${score}点`;
-      rankingList.appendChild(item);
-    }
-    if (rankingStatus.textContent === "ランキングを更新中…") rankingStatus.textContent = "上位10名を表示しています。";
-  } catch { rankingList.innerHTML = "<li>ランキングを読み込めませんでした。</li>"; rankingStatus.textContent = "ランキングを読み込めませんでした。"; }
-}
-
-function destroyRuntimeSafely(target: PixiRuntime | null): { error: unknown } | null {
-  if (!target) {
-    return null;
-  }
-  try {
-    target.destroy();
-    return null;
-  } catch (error: unknown) {
-    return { error };
-  }
-}
-
-function disposeApplication(): void {
-  if (disposed) {
-    return;
-  }
-  disposed = true;
-  runtimeGeneration += 1;
-  lifecycleController.abort();
-  pauseButton.disabled = true;
-  resetButton.disabled = true;
-  copyReportButton.disabled = true;
-  setInputDisabled(true);
-  const activeRuntime = runtime;
-  runtime = null;
-  gameLoop.dispose();
+function startGame(): void {
+  if (!renderer || fatal || activeGame()) return;
+  const value = cleanPlayerName(ui.name.value);
+  if (!value) { setText(ui.nameStatus, "名前を入力してください。"); ui.name.focus(); return; }
+  playerName = value;
+  savePreference("doppan.player-name", value);
+  rankingRequest?.abort();
+  rankingLoaded = false;
+  element<HTMLDetailsElement>(".ranking-details").open = false;
+  resultShown = false;
+  element<HTMLElement>("[data-result-end-note]").textContent = "";
+  displayedTicket = null;
+  lastDigits = [7, 7, 7];
   session.destroy();
-  destroyRuntimeSafely(activeRuntime);
+  session = newSession();
+  session.setPower(Number(ui.power.value) / 100);
+  session.start();
+  closeDialogs();
+  audio.setSuspended(false);
+  loop.discardElapsedTime();
+  updateUi(session.snapshot());
+  ui.fire.focus({ preventScroll: true });
+}
+function showHelp(): void {
+  helpOrigin = dialogs.start.open ? "start" : dialogs.result.open ? "result" : dialogs.pause.open ? "pause" : "game";
+  if (activeGame()) { releaseFire(); session.setPaused(true); audio.setSuspended(true); }
+  openDialog(dialogs.help);
+}
+function closeHelp(): void {
+  if (helpOrigin === "game") resumeGame();
+  else openDialog(dialogs[helpOrigin]);
 }
 
-const gameLoop: GameLoop = registerGameLoopHmrDispose(
-  (deltaMs, timestampMs) => {
-    session.advance(deltaMs);
-    const snapshot = session.snapshot();
-    runtime?.updatePrototype(snapshot);
-    updateGraybox(snapshot);
-    updateSessionUi(snapshot);
-    runtime?.step(deltaMs);
-    if (runtime !== null) {
-      session.markRendered(timestampMs);
-    }
-    if (timestampMs - lastDiagnosticsAt >= 100) {
-      lastDiagnosticsAt = timestampMs;
-      updateDiagnostics(session.diagnostics());
-    }
-  },
-  import.meta.hot,
-  {
-    onDispose: disposeApplication,
-    onError: showPrototypeError,
-  },
-);
-
-const envElement = document.querySelector<HTMLElement>("[data-build-environment]");
-const targetElement = document.querySelector<HTMLElement>("[data-build-target]");
-const shaElement = document.querySelector<HTMLElement>("[data-build-sha]");
-const buildAtElement = document.querySelector<HTMLElement>("[data-build-at]");
-if (envElement) envElement.textContent = BUILD_INFO.environment;
-if (targetElement) targetElement.textContent = BUILD_INFO.target;
-if (shaElement) shaElement.textContent = formatBuildInfoValue(BUILD_INFO.sha);
-if (buildAtElement) buildAtElement.textContent = formatBuildInfoValue(BUILD_INFO.builtAt);
-
-function parsePhysicsHz(value: string): PhysicsStepHz {
-  return value === "120" ? 120 : 60;
-}
-
-function setStatus(message: string, active: boolean): void {
-  status.textContent = message;
-  status.dataset.active = active ? "true" : "false";
-  pauseButton.textContent = active ? "一時停止 (Esc)" : "再開 (Esc)";
-  pauseButton.setAttribute("aria-pressed", String(!active));
-}
-
-function showWebglError(error: unknown): void {
-  const message = error instanceof Error ? error.message : "WebGL renderer could not be started.";
-  const failedRuntime = runtime;
-  runtime = null;
-  webglError.hidden = false;
-  webglError.textContent = WEBGL_ERROR_GUIDE;
-  webglError.dataset.error = message;
-  canvasHost.setAttribute("aria-hidden", "true");
-  pauseButton.disabled = true;
-  resetButton.disabled = true;
-  copyReportButton.disabled = true;
-  setInputDisabled(true);
-  gameLoop.stop();
-  session.safeStop(error, false);
-  destroyRuntimeSafely(failedRuntime);
-  setStatus("WebGL案内を表示中", false);
-}
-
-function showPrototypeError(error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  prototypeError.hidden = false;
-  prototypeError.textContent = PROTOTYPE_ERROR_GUIDE;
-  prototypeError.dataset.error = message;
-  pauseButton.disabled = true;
-  copyReportButton.disabled = true;
-  setInputDisabled(true);
-  gameLoop.stop();
-  session.safeStop(error, false);
-  setStatus("安全停止中", false);
-  updateDiagnostics(session.diagnostics());
-}
-
-function togglePause(): void {
-  if (!runtime || disposed || !gameStarted || pauseButton.disabled) {
-    return;
-  }
-  if (!session.togglePause()) {
-    return;
-  }
-  const active = session.gameState.suspensionState === "None";
-  setStatus(active ? "実行中" : "一時停止中", active);
-  const snapshot = session.snapshot();
-  runtime.updatePrototype(snapshot);
-  updateGraybox(snapshot);
-  updateSessionUi(snapshot);
-  runtime.step(0);
-  updateDiagnostics(session.diagnostics());
-}
-
-function resetSession(started: boolean): void {
-  if (!runtime || disposed) {
-    return;
-  }
-  gameStarted = started;
-  resultPlatformLoaded = false;
-  session.reset(parsePhysicsHz(hzSelect.value));
-  prototypeError.hidden = true;
-  reportOutput.hidden = true;
-  reportOutput.textContent = "";
-  pauseButton.disabled = !started;
-  resetButton.disabled = false;
-  copyReportButton.disabled = !debugMode;
-  setInputDisabled(!started);
-  const snapshot = session.snapshot();
-  runtime.updatePrototype(snapshot);
-  updateGraybox(snapshot);
-  runtime.step(0);
-  updateSessionUi(snapshot);
-  if (!gameLoop.isRunning) {
-    gameLoop.start();
-  }
-  updateDiagnostics(session.diagnostics());
-}
-
-function beginGame(): void {
-  playerName = cleanName(playerNameInput.value);
-  playerNameInput.value = playerName;
-  if (!playerName) {
-    nameStatus.textContent = "名前を入力してから開始してください。";
-    playerNameInput.focus();
-    return;
-  }
-  localStorage.setItem("doppan.player-name", playerName);
-  nameStatus.textContent = "";
-  resetSession(true);
-  startGameButton.blur();
-  restartGameButton.blur();
-}
-
-function resetPrototype(): void {
-  resetSession(gameStarted);
-}
-
-startGameButton.addEventListener("click", beginGame, { signal: lifecycleController.signal });
-restartGameButton.addEventListener("click", beginGame, { signal: lifecycleController.signal });
-playerNameInput.addEventListener("input", () => { nameStatus.textContent = ""; }, { signal: lifecycleController.signal });
-homeShareButton.addEventListener("click", () => void shareOrCopy(homeShareText(), nameStatus), { signal: lifecycleController.signal });
-startShareButton.addEventListener("click", () => void shareOrCopy(homeShareText(), nameStatus), { signal: lifecycleController.signal });
-resultShareButton.addEventListener("click", () => void shareOrCopy(resultShareText.value, shareStatus, resultShareText), { signal: lifecycleController.signal });
-pauseButton.addEventListener("click", togglePause, { signal: lifecycleController.signal });
-resetButton.addEventListener("click", resetPrototype, { signal: lifecycleController.signal });
-hzSelect.addEventListener("change", resetPrototype, { signal: lifecycleController.signal });
-copyReportButton.addEventListener(
-  "click",
-  () => void showPlaytestReport(),
-  { signal: lifecycleController.signal },
-);
-
-bindPrototypeInput({
-  root,
-  keyboardTarget: window,
-  visibilityTarget: document,
-  input: session.input,
-  controller: lifecycleController,
-  onPauseToggle: togglePause,
-  isEnabled: () => gameStarted && runtime !== null && !session.gameState.isFatalRecovery,
-  onVisibilityChange: (hidden) => {
-    gameLoop.discardElapsedTime();
-    session.setVisibility(hidden);
-    const active = gameStarted && !hidden && session.gameState.suspensionState === "None";
-    setStatus(
-      hidden ? "画面非表示で停止中" : gameStarted ? active ? "実行中" : "一時停止中" : "ゲーム開始待ち",
-      active,
-    );
-  },
-  onError: showPrototypeError,
-});
-
-window.addEventListener("beforeunload", () => {
-  disposeApplication();
-}, { signal: lifecycleController.signal });
-
-const forceFailure = (() => {
-  const query = new URLSearchParams(window.location.search);
-  return (
-    query.get("forceWebGLFailure") === "1" ||
-    query.get("webgl") === "fail" ||
-    query.get("webgl") === "failure"
-  );
-})();
-
-async function initializePixiRuntime(): Promise<boolean> {
-  if (session.gameState.isFatalRecovery) {
-    gameLoop.stop();
-    setInputDisabled(true);
-    return false;
-  }
-  const generation = runtimeGeneration + 1;
-  runtimeGeneration = generation;
-  gameLoop.stop();
-  const previousRuntime = runtime;
-  runtime = null;
-  const destroyError = destroyRuntimeSafely(previousRuntime);
-  if (destroyError) {
-    showWebglError(destroyError.error);
-    return false;
-  }
-  pauseButton.disabled = true;
-  resetButton.disabled = true;
-  setInputDisabled(true);
-  canvasHost.removeAttribute("aria-hidden");
-  webglError.hidden = true;
-  setStatus("初期化中", false);
-
-  try {
-    const created = await createPixiRuntime({
-      host: canvasHost,
-      forceWebGLFailure: forceFailure,
-      renderMode: debugMode ? "diagnostic" : "player",
-      onFatalError: showWebglError,
+function renderReels(snapshot: PachiSessionSnapshot): void {
+  const spin = snapshot.spin;
+  ui.display.dataset.stage = spin.stage;
+  if (spin.ticket !== displayedTicket) { displayedTicket = spin.ticket; }
+  if (spin.finalDigits) {
+    if (spin.stopped.every(Boolean)) lastDigits = spin.finalDigits.map((digit, index) => digit ?? lastDigits[index] ?? 7);
+    ui.reels.forEach((reel, index) => {
+      const moving = !spin.stopped[index];
+      reel.dataset.spinning = String(moving);
+      const value = moving ? (reducedMotion ? "·" : String((Math.floor(spin.elapsed * 12) + index * 3) % 10)) : String(spin.finalDigits?.[index] ?? 7);
+      setText(reel, value);
     });
-    if (disposed || generation !== runtimeGeneration) {
-      destroyRuntimeSafely(created);
-      return false;
-    }
-    runtime = created;
-    const snapshot = session.snapshot();
-    runtime.updatePrototype(snapshot);
-    updateGraybox(snapshot);
-    runtime.step(0);
-    pauseButton.disabled = !gameStarted;
-    resetButton.disabled = false;
-    copyReportButton.disabled = !debugMode;
-    setInputDisabled(!gameStarted);
-    updateSessionUi(snapshot);
-    updateDiagnostics(session.diagnostics());
-    if (!gameLoop.start()) {
-      throw new Error("The single game loop could not be started");
-    }
-    return true;
-  } catch (error: unknown) {
-    if (!disposed && generation === runtimeGeneration) {
-      showWebglError(error);
-    }
-    return false;
+  } else {
+    ui.reels.forEach((reel, index) => { reel.dataset.spinning = "false"; setText(reel, String(lastDigits[index] ?? 7)); });
   }
-}
-
-function updateDiagnostics(diagnostics: GaSessionDiagnostics): void {
-  diagnosticsElements.hz.textContent = `${diagnostics.fixedStep.physicsStepHz} Hz`;
-  diagnosticsElements.step.textContent = String(diagnostics.fixedStep.physicsStepId);
-  diagnosticsElements.queue.textContent = `${diagnostics.inputQueueSize} / 256`;
-  diagnosticsElements.resources.textContent =
-    `${diagnostics.physics.bodyCount} / ${diagnostics.physics.fixtureCount} / ${diagnostics.physics.jointCount}`;
-  diagnosticsElements.dropped.textContent =
-    `${diagnostics.fixedStep.droppedSimulationCount}回 · ${diagnostics.fixedStep.droppedSimulationMs.toFixed(1)}ms`;
-  diagnosticsElements.integrity.textContent = diagnostics.runIntegrity;
-  diagnosticsElements.integrity.dataset.valid = String(diagnostics.runIntegrity === "valid");
-  diagnosticsElements.shot.textContent = session.snapshot().shotProgress[0]?.currentState ?? "Idle";
-  diagnosticsElements.speed.textContent = diagnostics.physics.ballSpeed.toFixed(2);
-  diagnosticsElements.physicsLatency.textContent = formatLatency(
-    diagnostics.inputLatency.inputToPhysics.medianMs,
-    diagnostics.inputLatency.inputToPhysics.p95Ms,
-  );
-  diagnosticsElements.drawLatency.textContent = formatLatency(
-    diagnostics.inputLatency.inputToDraw.medianMs,
-    diagnostics.inputLatency.inputToDraw.p95Ms,
-  );
-  chargeProgress.value = diagnostics.launchCharge;
-  chargeProgress.setAttribute("aria-valuetext", `${Math.round(diagnostics.launchCharge * 100)}%`);
-  updateGrayboxFromDiagnostics(diagnostics);
-}
-
-function updateGraybox(snapshot: GrayboxAlphaSnapshot): void {
-  grayboxElements.target.textContent =
-    snapshot.graybox.activeTargetIds.length > 0
-      ? snapshot.graybox.activeTargetIds.map((targetId) => formatGrayboxTargetLabel(targetId)).join(" / ")
-      : snapshot.graybox.climaxState === "active"
-        ? "クライマックス中"
-        : "目標なし";
-  grayboxElements.returnRoute.textContent = formatGrayboxReturnRouteLabel(snapshot.graybox.returnRouteId);
-  grayboxElements.progress.textContent =
-    `${snapshot.graybox.completedShotIds.length} / ${GRAYBOX_PATH_LENGTH}`;
-  grayboxElements.score.textContent = String(snapshot.graybox.score);
-  grayboxElements.combo.textContent = String(snapshot.graybox.combo);
-  grayboxElements.event.textContent = snapshot.graybox.lastEventLabel ?? "—";
-}
-
-function updateGrayboxFromDiagnostics(diagnostics: GaSessionDiagnostics): void {
-  updateGraybox({
-    ...session.snapshot(),
-    graybox: diagnostics.graybox,
+  const judging = snapshot.rushStage === "judge";
+  const opening = snapshot.jackpotRemaining > 0;
+  const judgment = snapshot.rushResult === "continue" ? "RUSH 継続！" : snapshot.rushResult === "end" ? "RUSH 終了" : `継続判定 ${snapshot.rushRound} / 3`;
+  ui.display.dataset.rushStage = snapshot.rushStage;
+  setText(ui.mode, snapshot.rushStage !== "idle" ? `RUSH ${snapshot.rushRound} / 3` : "DOPPAN CHANCE");
+  setText(ui.title, judging ? judgment : opening ? `RUSH ${snapshot.rushRound} / 3` : spin.stage === "preview" ?
+    (spin.cue === "guaranteed" ? "大当たり保証！" : "保留がたまった！") : spin.title ||
+    (snapshot.phase === "settling" ? "最後の玉を見届けよう" : snapshot.charge >= 5 ? "次の抽選で、大当たり" : "中央の入賞口を狙おう"));
+  const detail = judging ? "継続率 1/2 · 最大3区間" : opening ? `得点口 あと${snapshot.jackpotRemaining.toFixed(1)}秒` :
+    spin.stage === "revival" ? (spin.stopped[1] ? "まだ、終わらない" : "再始動！ ここから巻き返す") : spin.stage === "preview" && spin.cue === "guaranteed" ? "この保留で大当たり" :
+    spin.stage === "reach" ? "あと、ひとつ。" : spin.reveal === "miss" ? "チャージがたまる" :
+    snapshot.pending >= 4 ? "保留満タン · 発射を休めます" : "3つそろえば大当たり";
+  setText(ui.detail, detail);
+  setText(ui.pendingCount, `${snapshot.pending} / 4`);
+  const guarantees = snapshot.pendingCues.filter((cue) => cue === "guaranteed").length;
+  ui.pending.setAttribute("aria-label", `保留${snapshot.pending}件${guarantees ? `、大当たり保証${guarantees}件` : ""}`);
+  ui.lights.forEach((light, index) => {
+    light.dataset.active = String(index < snapshot.pending);
+    light.dataset.cue = snapshot.pendingCues[index] ?? "normal";
+    light.title = light.dataset.cue === "guaranteed" ? "大当たり保証の保留" : "保留";
   });
+  ui.charge.value = snapshot.charge;
+  setText(ui.chargeLabel, snapshot.charge >= 5 ? "次は大当たり" : `チャージ ${snapshot.charge} / 5`);
+  // The reward accent stays inside the LCD and appears only for the initial award.
+  ui.banner.hidden = !(snapshot.rushRound === 1 && snapshot.jackpotRemaining > 4.8);
+  setText(ui.winNote, "得点口が開いた！");
 }
 
-function updateSessionUi(snapshot: GaSessionSnapshot): void {
-  gaElements.ball.textContent = String(snapshot.currentBall) + " / " + String(snapshot.totalBalls);
-  gaElements.remaining.textContent = String(snapshot.ballsRemaining);
-  gaElements.phase.textContent = formatPhase(snapshot.phase);
-  gaElements.result.textContent = snapshot.result === null ? "—" : String(snapshot.result.score);
-  updateResultOverlay(snapshot);
-  if (!gameStarted) {
-    setStatus("ゲーム開始待ち", false);
-    pauseButton.disabled = true;
-    setInputDisabled(true);
-    return;
+function handleEvent(event: PachiSessionEvent): void {
+  audio.play(event);
+  if (event.type === "deadline" && event.reason) {
+    element<HTMLElement>("[data-result-end-note]").textContent = event.reason === "balls-exhausted" ?
+      "持ち玉と保留を使い切ったため、終了しました。" : "90秒の発射と、残った保留を精算した結果です。";
   }
-  if (snapshot.phase === "result") {
-    setStatus("結果表示", false);
-    pauseButton.disabled = true;
-    setInputDisabled(true);
-    return;
+  const messages: Partial<Record<PachiSessionEvent["type"], string>> = {
+    started: "強さを調整して、中央の入賞口を狙おう。",
+    "start-entry": "中央入賞 ＋50点・3玉！ 保留がたまる。",
+    "side-entry": "副入賞 ＋20点・2玉。",
+    "spin-start": "図柄が回りはじめた。",
+    "spin-reach": "リーチ！ 真ん中がそろえば大当たり。",
+    "jackpot-start": "大当たり ＋1,500点！ 光る得点口で稼ごう。",
+    "attacker-entry": "得点口に入賞！ ＋100点・5玉。",
+    "jackpot-end": "得点口が閉じた。",
+    "rush-judge": "ラッシュ継続判定。もう一度、得点口が開く…？",
+    "rush-continue": "ラッシュ継続！ 得点口がもう6秒開きます。",
+    "rush-end": "ラッシュ終了。残った保留へ進みます。",
+    deadline: "時間終了。残った玉と保留を受け取ろう。",
+    reclaimed: "止まった玉を回収しました。プレイを続けられます。",
+  };
+  if (event.type === "start-entry" && event.accepted === false) {
+    setText(ui.event, session.snapshot().phase === "playing" ? "保留満タン：中央の得点・払い玉なし" : "時間終了：中央の得点・払い玉なし");
   }
-  if (session.gameState.suspensionState !== "None") {
-    setStatus("一時停止中", false);
-    pauseButton.disabled = false;
-    setInputDisabled(true);
-    return;
-  }
-  if (snapshot.phase === "launch-ready") {
-    setStatus("球" + snapshot.currentBall + " 発射待ち", true);
-  } else if (snapshot.phase === "playing") {
-    setStatus("球" + snapshot.currentBall + " プレイ中", true);
-  } else if (snapshot.phase === "ball-ending") {
-    setStatus("球終了。次の球を準備中", false);
-  }
-  pauseButton.disabled = runtime === null;
-  setInputDisabled(runtime === null);
+  else if (event.type === "jackpot-start" && event.opened === false) setText(ui.event, "保留の大当たり ＋1,500点を受け取りました。");
+  else if (event.type === "jackpot-start" && session.snapshot().phase === "settling") setText(ui.event, "最後のラッシュ！ 発射して得点口を狙えます。");
+  else if (event.type === "deadline" && event.reason === "balls-exhausted") setText(ui.event, "持ち玉終了。今回の結果です。");
+  else if (event.type === "deadline" && session.snapshot().jackpotRemaining > 0) setText(ui.event, "時間終了。最後の得点口を狙えます。");
+  else if (event.type === "spin-reveal" && !event.win) setText(ui.event, "はずれ。5回続くと、次は大当たり。");
+  else if (messages[event.type]) setText(ui.event, messages[event.type] ?? "");
+  if (event.type === "deadline") releaseFire();
 }
 
-function formatPhase(phase: GaSessionSnapshot["phase"]): string {
-  switch (phase) {
-    case "launch-ready":
-      return "発射待ち";
-    case "playing":
-      return "プレイ中";
-    case "ball-ending":
-      return "球終了";
-    case "result":
-      return "結果";
-  }
+function updateUi(snapshot: PachiSessionSnapshot): void {
+  root.dataset.phase = snapshot.phase;
+  root.dataset.paused = String(snapshot.paused);
+  root.dataset.fired = String(snapshot.stats.fired);
+  root.dataset.startEntries = String(snapshot.stats.startEntries);
+  root.dataset.jackpots = String(snapshot.stats.jackpotCount);
+  root.dataset.attackerEntries = String(snapshot.stats.attackerEntries);
+  root.dataset.spinStage = snapshot.spin.stage;
+  root.dataset.rushStage = snapshot.rushStage;
+  root.dataset.rushRound = String(snapshot.rushRound);
+  setText(ui.score, snapshot.score.toLocaleString("ja-JP"));
+  ui.score.parentElement?.setAttribute("data-negative", String(snapshot.score < 0));
+  setText(ui.time, snapshot.phase === "settling" ? "精算中" : `${Math.ceil(snapshot.timeRemaining)}秒`);
+  setText(ui.stock, String(snapshot.ballsRemaining));
+  const playable = activeGame(snapshot) && !snapshot.paused && !fatal;
+  ui.fire.disabled = !canFire(snapshot);
+  ui.fire.dataset.firing = String(snapshot.firing && !snapshot.paused && !ui.fire.disabled);
+  ui.power.disabled = !playable;
+  ui.pause.disabled = !activeGame(snapshot) || fatal;
+  ui.finish.disabled = !activeGame(snapshot) || fatal;
+  renderReels(snapshot);
+  if (snapshot.phase === "result" && !resultShown) showResult(snapshot);
 }
 
-async function showPlaytestReport(): Promise<void> {
-  const report = session.playtestReportJson();
-  reportOutput.hidden = false;
-  reportOutput.textContent = report;
-  const clipboard = navigator.clipboard;
+function showResult(snapshot: PachiSessionSnapshot): void {
+  resultShown = true;
+  releaseFire();
+  openDialog(dialogs.result);
+  element<HTMLElement>("[data-result-player]").textContent = `${playerName}さん`;
+  element<HTMLElement>("[data-result-score]").textContent = snapshot.score.toLocaleString("ja-JP");
+  element<HTMLElement>("[data-result-jackpots]").textContent = `${snapshot.stats.jackpotCount}回`;
+  element<HTMLElement>("[data-result-starts]").textContent = `${snapshot.stats.startEntries}回`;
+  element<HTMLElement>("[data-result-attacker]").textContent = `${snapshot.stats.attackerEntries}回`;
+  element<HTMLElement>("[data-result-fired]").textContent = `${snapshot.stats.fired}発`;
+  element<HTMLElement>("[data-result-side]").textContent = `${snapshot.stats.sideEntries}回`;
+  element<HTMLElement>("[data-result-rush]").textContent = `${snapshot.stats.rushContinuations}回`;
+  const breakdown = element<HTMLElement>("[data-result-breakdown]");
+  breakdown.replaceChildren();
+  const parts = [["発射による減点", snapshot.scoreParts.shots], ["中央・副入賞", snapshot.scoreParts.start + snapshot.scoreParts.side], ["大当たり", snapshot.scoreParts.jackpot], ["得点口の入賞", snapshot.scoreParts.attacker]] as const;
+  for (const [label, score] of parts) {
+    const row = document.createElement("div"); const term = document.createElement("dt"); const value = document.createElement("dd");
+    term.textContent = label; value.textContent = `${score > 0 ? "+" : ""}${score.toLocaleString("ja-JP")}点`; row.append(term, value); breakdown.append(row);
+  }
+  const hint = snapshot.stats.fired === 0 ? "発射ボタンを押している間、玉が出ます。次は強さを動かして、飛び方を見てみよう。" :
+    snapshot.stats.startEntries < 3 ? "中央に届きにくい時は、強さを95付近に戻して、5ずつ動かしてみよう。玉の落ちる場所を見ながら調整できます。" :
+    snapshot.stats.jackpotCount > 0 && snapshot.stats.attackerEntries === 0 ? "大当たり中の得点口も、強さで狙えます。開いている6秒が稼ぎどころです。" :
+    `中央に${snapshot.stats.startEntries}回入賞。保留が満タンの間は発射を休むと、玉と減点を抑えられます。`;
+  element<HTMLElement>("[data-result-hint]").textContent = hint;
+  resultText = `【ドッパン】${playerName} / ${snapshot.score.toLocaleString("ja-JP")}点 / 大当たり${snapshot.stats.jackpotCount}回 / 中央入賞${snapshot.stats.startEntries}回\n90秒ルール v1\n${gameUrl()}\n#ドッパン #カメレオンJP`;
+  element<HTMLTextAreaElement>("[data-share-text]").value = resultText;
+  element<HTMLTextAreaElement>("[data-share-text]").hidden = true;
+  element<HTMLElement>("[data-share-status]").textContent = "";
+  element<HTMLElement>("[data-ranking-status]").textContent = "新ルールのランキングは準備中です。今回の結果はシェアできます。";
+  element<HTMLOListElement>("[data-ranking-list]").replaceChildren();
+}
+
+async function loadRanking(): Promise<void> {
+  const details = element<HTMLDetailsElement>(".ranking-details");
+  if (!details.open || rankingLoaded || !resultShown) return;
+  rankingLoaded = true;
+  rankingRequest?.abort();
+  const request = new AbortController(); rankingRequest = request;
+  const timeout = window.setTimeout(() => request.abort(), 7000);
+  const status = element<HTMLElement>("[data-ranking-status]");
+  setText(status, "新ルールは準備中です。旧3球ルールの参考記録を読み込みます…");
   try {
-    if (clipboard === undefined) {
-      throw new Error("Clipboard API is unavailable");
-    }
-    await clipboard.writeText(report);
-    const active = session.snapshot().phase === "launch-ready" || session.snapshot().phase === "playing";
-    setStatus("試遊レポートを表示・コピーしました", active);
+    const rows = await readHistoricalRanking(request.signal);
+    if (request.signal.aborted || !resultShown) return;
+    setText(status, "新ルールは準備中です。以下は旧3球ルールの記録で、今回の得点とは比較できません。");
+    const list = element<HTMLOListElement>("[data-ranking-list]"); list.replaceChildren();
+    for (const row of rows) { const item = document.createElement("li"); item.textContent = `${row.name}：${row.score.toLocaleString("ja-JP")}点`; list.append(item); }
+    if (!rows.length) setText(status, "新ルールのランキングは準備中です。旧ルールの記録はありません。");
   } catch {
-    const active = session.snapshot().phase === "launch-ready" || session.snapshot().phase === "playing";
-    setStatus("試遊レポートを表示しました", active);
+    if (rankingRequest === request && resultShown) { setText(status, "旧ルールの記録を読み込めませんでした。開き直すと再試行できます。新ルールのランキングは準備中です。"); rankingLoaded = false; }
+  } finally { window.clearTimeout(timeout); }
+}
+
+async function share(text: string, home = false): Promise<void> {
+  const outcome = await shareGame(text);
+  const status = home ? ui.nameStatus : element<HTMLElement>("[data-share-status]");
+  if (outcome === "cancelled" || disposed) return;
+  setText(status, outcome === "shared" ? "共有しました。" : outcome === "copied" ? "シェア文をコピーしました。" : "コピー用の文を表示しました。");
+  if (outcome === "manual") {
+    if (home) { ui.nameStatus.textContent = text; ui.nameStatus.style.userSelect = "text"; }
+    else { const copy = element<HTMLTextAreaElement>("[data-share-text]"); copy.hidden = false; copy.focus(); copy.select(); }
   }
 }
 
-function formatLatency(medianMs: number | null, p95Ms: number | null): string {
-  return medianMs === null || p95Ms === null
-    ? "未計測"
-    : `${medianMs.toFixed(1)} / ${p95Ms.toFixed(1)} ms`;
+function fail(error: unknown): void {
+  if (fatal || disposed) return;
+  fatal = true;
+  releaseFire();
+  session.setPaused(true);
+  audio.setSuspended(true);
+  closeDialogs();
+  ui.loading.hidden = true;
+  ui.error.hidden = false;
+  ui.errorText.textContent = "盤面を表示できませんでした。読み込み直してください。";
+  root.dataset.error = "true";
+  ui.start.disabled = true;
+  updateUi(session.snapshot());
+  if (debug) console.error(error);
 }
 
-declare global {
-  interface Window {
-    __DOPPAN_G1A__?: {
-      getLoopDiagnostics: () => ReturnType<GameLoop["diagnostics"]>;
-      getPixiDiagnostics: () => PixiDiagnostics | null;
-      reinitializeRenderer: () => Promise<boolean>;
-    };
-    __DOPPAN_G1B__?: {
-      getLoopDiagnostics: () => ReturnType<GameLoop["diagnostics"]>;
-      getPixiDiagnostics: () => PixiDiagnostics | null;
-      getPrototypeDiagnostics: () => GaSessionDiagnostics;
-      getSnapshot: () => GaSessionSnapshot;
-      reset: (physicsStepHz?: PhysicsStepHz) => void;
-      reinitializeRenderer: () => Promise<boolean>;
-    };
-    __DOPPAN_GA__?: {
-      getPrototypeDiagnostics: () => GaSessionDiagnostics;
-      getSessionDiagnostics: () => GaSessionDiagnostics;
-      getSnapshot: () => GaSessionSnapshot;
-      getPlaytestReport: () => ReturnType<GaSession["playtestReport"]>;
-      getPlaytestReportJson: () => string;
-      reset: (physicsStepHz?: PhysicsStepHz) => void;
-    };
+const loop = registerGameLoopHmrDispose((deltaMs) => {
+  if (fatal || disposed) return;
+  // Visibility/blur pauses rather than paying a multi-second backlog on return.
+  if (deltaMs > 250 && activeGame()) { pauseGame(); return; }
+  const snapshot = session.step(Math.min(deltaMs, 250));
+  for (const event of session.drainEvents()) handleEvent(event);
+  updateUi(snapshot);
+  renderer?.render(snapshot, reducedMotion);
+}, import.meta.hot, { onError: fail, onDispose: dispose });
+
+function dispose(): void {
+  if (disposed) return;
+  disposed = true;
+  controller.abort();
+  layoutObserver.disconnect();
+  rankingRequest?.abort();
+  loop.dispose();
+  audio.destroy();
+  renderer?.destroy();
+  renderer = null;
+  session.destroy();
+}
+
+ui.fire.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || pointerId !== null || !canFire(session.snapshot())) return;
+  event.preventDefault(); pointerId = event.pointerId; ui.fire.setPointerCapture(event.pointerId); syncFire();
+}, { signal });
+for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
+  ui.fire.addEventListener(type, (event) => { if (event.pointerId === pointerId) { pointerId = null; syncFire(); } }, { signal });
+}
+ui.fire.addEventListener("contextmenu", (event) => event.preventDefault(), { signal });
+root.addEventListener("dblclick", (event) => { if (!(event.target instanceof HTMLInputElement)) event.preventDefault(); }, { signal });
+ui.power.addEventListener("input", () => { session.setPower(Number(ui.power.value) / 100); ui.powerValue.value = ui.power.value; }, { signal });
+element<HTMLFormElement>("[data-start-form]").addEventListener("submit", (event) => { event.preventDefault(); startGame(); }, { signal });
+listen("pause", pauseGame); listen("resume", resumeGame); listen("finish", finishGame); listen("finish-paused", finishGame);
+listen("help", showHelp); listen("close-help", closeHelp); listen("reload", () => window.location.reload());
+listen("restart", () => { closeDialogs(); resultShown = false; startGame(); });
+listen("share-home", () => { void share(`【ドッパン】狙って、ためて、大当たり。90秒でスコアを競おう！\n${gameUrl()}`, true); });
+listen("share-result", () => { void share(resultText); });
+ui.sound.addEventListener("click", () => {
+  const generation = ++audioGeneration;
+  soundEnabled = !soundEnabled;
+  void audio.setEnabled(soundEnabled).then((enabled) => {
+    if (disposed || generation !== audioGeneration) return;
+    soundEnabled = enabled; ui.sound.textContent = enabled ? "音 ON" : "音 OFF"; ui.sound.setAttribute("aria-pressed", String(enabled));
+  });
+}, { signal });
+ui.reduced.addEventListener("change", () => { reducedMotion = ui.reduced.checked; savePreference("doppan:pachi:reduced-motion", String(reducedMotion)); }, { signal });
+element<HTMLDetailsElement>(".ranking-details").addEventListener("toggle", () => { void loadRanking(); }, { signal });
+for (const dialog of [dialogs.start, dialogs.result]) dialog.addEventListener("cancel", (event) => event.preventDefault(), { signal });
+dialogs.help.addEventListener("cancel", (event) => { event.preventDefault(); closeHelp(); }, { signal });
+dialogs.pause.addEventListener("cancel", (event) => { event.preventDefault(); resumeGame(); }, { signal });
+window.addEventListener("keydown", (event) => {
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || document.querySelector("dialog[open]")) return;
+  if (event.code === "Escape") { event.preventDefault(); pauseGame(); return; }
+  if (!activeGame() || session.snapshot().paused || fatal) return;
+  if (event.code === "Space" && canFire(session.snapshot())) { event.preventDefault(); keyboardFiring = true; syncFire(); }
+  if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
+    event.preventDefault(); ui.power.value = String(Math.max(0, Math.min(100, Number(ui.power.value) + (event.code === "ArrowLeft" ? -2 : 2))));
+    session.setPower(Number(ui.power.value) / 100); ui.powerValue.value = ui.power.value;
   }
-}
+}, { signal });
+window.addEventListener("keyup", (event) => { if (event.code === "Space") { keyboardFiring = false; syncFire(); } }, { signal });
+window.addEventListener("blur", pauseGame, { signal });
+document.addEventListener("visibilitychange", () => { if (document.hidden) pauseGame(); loop.discardElapsedTime(); }, { signal });
+window.addEventListener("pagehide", pauseGame, { signal });
+window.addEventListener("pageshow", () => loop.discardElapsedTime(), { signal });
 
-interface PixiDiagnostics {
-  rendererName: string;
-  tickerPresent: false;
-  tickerAutoStart: false;
-  tickerStarted: false;
-  renderCount: number;
-}
-
-function getPixiDiagnostics(): PixiDiagnostics | null {
-  return runtime
-    ? {
-        rendererName: runtime.renderer.name,
-        tickerPresent: false,
-        tickerAutoStart: false,
-        tickerStarted: false,
-        renderCount: runtime.renderCount,
-      }
-    : null;
-}
-
-window.__DOPPAN_G1A__ = {
-  getLoopDiagnostics: () => gameLoop.diagnostics(),
-  getPixiDiagnostics,
-  reinitializeRenderer: initializePixiRuntime,
-};
-
-window.__DOPPAN_G1B__ = {
-  getLoopDiagnostics: () => gameLoop.diagnostics(),
-  getPixiDiagnostics,
-  getPrototypeDiagnostics: () => session.diagnostics(),
-  getSnapshot: () => session.snapshot(),
-  reset: (physicsStepHz = session.physicsStepHz) => {
-    hzSelect.value = String(physicsStepHz);
-    session.reset(physicsStepHz);
-    setInputDisabled(runtime === null);
-    const snapshot = session.snapshot();
-    runtime?.updatePrototype(snapshot);
-    updateGraybox(snapshot);
-    updateSessionUi(snapshot);
-    runtime?.step(0);
-    if (runtime !== null) {
-      setInputDisabled(false);
-      if (!gameLoop.isRunning) {
-        gameLoop.start();
-      }
+async function boot(): Promise<void> {
+  try {
+    const created = await createPachiRenderer({ host: ui.host, onFatalError: fail, forceWebGLFailure: new URLSearchParams(location.search).get("webgl") === "off" });
+    if (disposed || fatal) { created.destroy(); return; }
+    renderer = created;
+    const screen = session.snapshot().geometry.screen ?? PACHI_SCREEN_RECT;
+    ui.display.style.left = `${screen.x / 720 * 100}%`;
+    ui.display.style.top = `${screen.y / 900 * 100}%`;
+    ui.display.style.width = `${screen.width / 720 * 100}%`;
+    ui.display.style.height = `${screen.height / 900 * 100}%`;
+    const board = session.snapshot().geometry;
+    for (const kind of ["start", "attacker"] as const) {
+      const mouth = board[kind];
+      const label = element<HTMLElement>(`[data-mouth-label=${kind}]`);
+      label.style.left = `${(mouth.x + mouth.width / 2) / board.width * 100}%`;
+      label.style.top = `${(mouth.y + mouth.height + 8) / board.height * 100}%`;
     }
-    updateDiagnostics(session.diagnostics());
-  },
-  reinitializeRenderer: initializePixiRuntime,
-};
-
-window.__DOPPAN_GA__ = {
-  getPrototypeDiagnostics: () => session.diagnostics(),
-  getSessionDiagnostics: () => session.diagnostics(),
-  getSnapshot: () => session.snapshot(),
-  getPlaytestReport: () => session.playtestReport(),
-  getPlaytestReportJson: () => session.playtestReportJson(),
-  reset: (physicsStepHz = session.physicsStepHz) => {
-    hzSelect.value = String(physicsStepHz);
-    resetPrototype();
-  },
-};
-
-void initializePixiRuntime();
+    renderer.render(session.snapshot(), reducedMotion);
+    ui.loading.hidden = true;
+    ui.start.disabled = false;
+    root.dataset.ready = "true";
+    updateUi(session.snapshot());
+    openDialog(dialogs.start);
+    loop.start();
+  } catch (error) { fail(error); }
+}
+void boot();

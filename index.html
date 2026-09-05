@@ -1,182 +1,232 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="robots" content="noindex, nofollow, noarchive" />
-    <title>DOPPAN — つなぎ直す</title>
-  </head>
-  <body>
-    <main class="app-shell" data-app-root data-debug="false">
-      <section class="boot-panel" aria-labelledby="page-title">
-        <header class="game-header">
-          <div class="brand-line">
-            <div>
-              <p class="eyebrow">DOPPAN · 3 BALL PINBALL</p>
-              <h1 id="page-title">つなぎ直す</h1>
-            </div>
-            <div class="header-actions">
-              <span class="loop-status" data-status role="status" aria-live="polite">ゲーム開始待ち</span>
-              <button type="button" class="toolbar-button pause-button" data-action="toggle-pause" aria-pressed="false" disabled>
-                一時停止 (Esc)
-              </button>
-              <button type="button" class="toolbar-button" data-action="share-home">ゲームをシェア</button>
-              <a class="platform-link" href="https://chameleonjp-lab.github.io/chameleonjp_lab/" target="_blank" rel="noopener noreferrer">実験場へ</a>
-            </div>
-          </div>
-          <p class="lead">
-            黄色の目標へ当てると、次に球が戻る道が変わります。3球のあいだに経路をつないでください。
-          </p>
-        </header>
-
-        <details class="build-details" data-debug-only>
-          <summary>ビルド情報</summary>
-          <div class="build-grid" aria-label="build information">
-            <div class="build-item">
-              <span class="build-label">環境</span>
-              <strong class="build-value" data-build-environment>loading</strong>
-            </div>
-            <div class="build-item">
-              <span class="build-label">対象</span>
-              <strong class="build-value" data-build-target>loading</strong>
-            </div>
-            <div class="build-item">
-              <span class="build-label">SHA</span>
-              <strong class="build-value" data-build-sha>loading</strong>
-            </div>
-            <div class="build-item">
-              <span class="build-label">ビルド日時</span>
-              <strong class="build-value" data-build-at>loading</strong>
-            </div>
-          </div>
-        </details>
-
-        <div class="prototype-toolbar" data-debug-only aria-label="開発者向け試作設定">
-          <button type="button" class="toolbar-button primary" data-action="reset-prototype" disabled>新しいゲーム</button>
-          <label class="hz-control">
-            <span>物理更新</span>
-            <select data-physics-hz aria-label="物理更新回数">
-              <option value="60" selected>60 Hz</option>
-              <option value="120">120 Hz</option>
-            </select>
-          </label>
-          <button type="button" class="toolbar-button" data-action="copy-report" disabled>試遊レポートを表示・コピー</button>
-        </div>
-
-        <section class="player-panel" aria-label="ゲーム画面">
-          <div class="game-hud">
-            <div class="hud-metric hud-score">
-              <span class="hud-label">得点</span>
-              <strong data-graybox="score">0</strong>
-              <span class="hud-subvalue" data-ga="result">—</span>
-            </div>
-            <div class="hud-metric">
-              <span class="hud-label">球</span>
-              <strong data-ga="ball">1 / 3</strong>
-              <span class="hud-subvalue">残り <span data-ga="remaining">3</span></span>
-            </div>
-            <div class="hud-metric">
-              <span class="hud-label">進行</span>
-              <strong data-graybox="progress">0 / 5</strong>
-              <span class="hud-subvalue">連続 <span data-graybox="combo">0</span></span>
-            </div>
-            <div class="hud-metric hud-phase">
-              <span class="hud-label">状態</span>
-              <strong data-ga="phase">発射待ち</strong>
-            </div>
-            <div class="hud-target">
-              <span class="hud-label">次に狙う</span>
-              <strong data-graybox="target">左の安全ショット / 右の安全ショット</strong>
-              <span class="hud-route" data-graybox="return">中央の基本戻り</span>
-            </div>
-            <p class="hud-event" data-graybox="event" role="status" aria-live="polite">左または右の安全ショットを選ぶ</p>
-          </div>
-
-          <p class="graybox-guide">
-            黄色く光る目標へ、球をフリッパーで返します。成功すると戻り道が変わります。
-          </p>
-
-          <div class="game-stage">
-            <div class="canvas-host" data-canvas-host aria-label="つなぎ直すのピンボール盤面"></div>
-
-            <div class="game-overlay start-overlay" data-game-overlay="start">
-              <p class="overlay-kicker">3球でルートをつなぐ</p>
-              <h2>目標へ当てて、戻り道を変える</h2>
-              <p>まず発射ボタンを押し続け、離して球を出します。左右のボタンで球を返します。</p>
-              <label class="name-label" for="player-name">ランキング表示名</label>
-              <input id="player-name" class="name-input" type="text" maxlength="20" autocomplete="nickname" placeholder="名前を入力してください" />
-              <p class="name-status" data-name-status role="status" aria-live="polite"></p>
-              <button type="button" class="overlay-button" data-action="start-game">ゲームを始める</button>
-              <button type="button" class="overlay-button secondary" data-action="share-start">ゲームをシェア</button>
-            </div>
-
-            <div class="game-overlay result-overlay" data-game-overlay="result" hidden>
-              <p class="overlay-kicker">3球終了</p>
-              <h2>今回の結果</h2>
-              <strong class="result-score" data-result="score">0</strong>
-              <p class="result-line">進行 <span data-result="progress">0 / 5</span></p>
-              <p class="result-line" data-result="climax">クライマックス未到達</p>
-              <p class="result-player" data-result="player"></p>
-              <textarea class="result-share-text" data-result="share-text" readonly aria-label="結果のシェア文"></textarea>
-              <button type="button" class="overlay-button" data-action="share-result">結果をシェア（文面をコピー）</button>
-              <p class="share-status" data-share-status role="status" aria-live="polite"></p>
-              <section class="online-ranking" aria-labelledby="doppan-ranking-title">
-                <h3 id="doppan-ranking-title">スコアランキング TOP10</h3>
-                <ol data-ranking-list><li>ランキングを読み込み中…</li></ol>
-                <p class="ranking-status" data-ranking-status role="status" aria-live="polite"></p>
-              </section>
-              <button type="button" class="overlay-button" data-action="restart-game">もう一度遊ぶ</button>
-              <a class="platform-link" href="https://chameleonjp-lab.github.io/chameleonjp_lab/" target="_blank" rel="noopener noreferrer">カメレオンJPの実験場へ</a>
-            </div>
-
-            <section class="input-panel" aria-label="ピンボール操作">
-              <button type="button" class="flipper-control left" data-input-action="leftFlipper" aria-label="左フリッパー">
-                左
-                <small>Z / ←</small>
-              </button>
-              <button type="button" class="flipper-control right" data-input-action="rightFlipper" aria-label="右フリッパー">
-                右
-                <small>/ / →</small>
-              </button>
-              <div class="launch-control-wrap">
-                <button type="button" class="launch-control" data-input-action="plunger">
-                  押してためる・離して発射
-                  <small>Space</small>
-                </button>
-                <progress data-launch-charge max="1" value="0" aria-label="発射強度"></progress>
-              </div>
-            </section>
-          </div>
-        </section>
-
-        <section class="diagnostics-panel" data-debug-only aria-label="技術診断">
-          <h2>技術診断</h2>
-          <dl class="diagnostics-grid">
-            <div><dt>物理</dt><dd data-diagnostic="hz">60 Hz</dd></div>
-            <div><dt>ステップ</dt><dd data-diagnostic="step">0</dd></div>
-            <div><dt>入力待ち</dt><dd data-diagnostic="queue">0 / 256</dd></div>
-            <div><dt>物体 / 部品 / 関節</dt><dd data-diagnostic="resources">0 / 0 / 0</dd></div>
-            <div><dt>時間切捨て</dt><dd data-diagnostic="dropped">0回 · 0.0ms</dd></div>
-            <div><dt>記録整合</dt><dd data-diagnostic="integrity" data-valid="true">valid</dd></div>
-            <div><dt>安全ショット</dt><dd data-diagnostic="shot">Idle</dd></div>
-            <div><dt>球速</dt><dd data-diagnostic="speed">0.00</dd></div>
-            <div><dt>入力→物理 中央 / 95%</dt><dd data-diagnostic="physics-latency">未計測</dd></div>
-            <div><dt>入力→描画 中央 / 95%</dt><dd data-diagnostic="draw-latency">未計測</dd></div>
-          </dl>
-        </section>
-
-        <p class="webgl-error" data-webgl-error hidden role="alert"></p>
-        <p class="webgl-error" data-prototype-error hidden role="alert"></p>
-
-        <section class="report-panel" data-debug-only aria-label="端末内試遊レポート">
-          <p class="report-note">レポートはこの画面のメモリ内だけで作り、保存・送信しません。</p>
-          <pre class="playtest-report" data-playtest-report hidden tabindex="0"></pre>
-        </section>
-
-        <p class="landscape-hint">縦向きのほうが盤面と操作を確認しやすくなります。</p>
-      </section>
-    </main>
-    <noscript>この画面を利用するにはJavaScriptを有効にしてください。</noscript>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow, noarchive" />
+<meta name="theme-color" content="#120e18" />
+<title>ドッパン — 狙って、ためて、大当たり。</title>
+</head>
+<body>
+<main class="app-shell" data-app-root>
+<header class="game-header">
+<h1>
+<span>DOPPAN</span>ドッパン</h1>
+<nav aria-label="ゲームメニュー">
+<button type="button" data-action="help" aria-label="遊び方">？</button>
+<button type="button" data-action="sound" aria-pressed="false">音 OFF</button>
+<button type="button" data-action="pause" disabled>一時停止</button>
+</nav>
+</header>
+<section class="game-hud" aria-label="今回の記録">
+<div class="score-metric">
+<span>スコア</span>
+<strong data-score>0</strong>
+</div>
+<div>
+<span>残り時間</span>
+<strong data-time>90<small>秒</small>
+</strong>
+</div>
+<div>
+<span>持ち玉</span>
+<strong data-stock>80</strong>
+</div>
+</section>
+<section class="play-area" aria-label="パチンコ盤面">
+<div class="machine" data-machine>
+<div class="canvas-host" data-canvas-host role="img" aria-label="玉が釘を跳ねて入賞口へ落ちる盤面">
+</div>
+<span class="mouth-label" data-mouth-label="start">START</span>
+<span class="mouth-label" data-mouth-label="attacker">得点口</span>
+<div class="reel-display" data-reel-display data-stage="idle">
+<p class="display-kicker" data-mode>CHANCE SYSTEM</p>
+<h2 data-spin-title>狙いを、定めよう。</h2>
+<div class="reels" aria-label="図柄" data-reels>
+<span data-reel="0">7</span>
+<span data-reel="1">7</span>
+<span data-reel="2">7</span>
+</div>
+<p class="display-subtitle" data-spin-detail>中央の入賞口で抽選</p>
+<div class="pending-row">
+<span>保留</span>
+<div class="pending-lights" data-pending aria-label="保留0件">
+<i>
+</i>
+<i>
+</i>
+<i>
+</i>
+<i>
+</i>
+</div>
+<strong data-pending-count>0 / 4</strong>
+</div>
+<div class="charge-row">
+<span data-charge-label>チャージ 0 / 5</span>
+<progress data-charge max="5" value="0" aria-label="外れのチャージ">
+</progress>
+</div>
+</div>
+<div class="win-banner" data-win-banner hidden>
+<span>大当たり</span>
+<strong>＋1,500</strong>
+<small data-win-note>得点口 OPEN</small>
+</div>
+</div>
+<div class="boot-message" data-loading role="status">盤面を準備しています…</div>
+<div class="boot-message" data-error hidden role="alert">
+<p data-error-text>
+</p>
+<button type="button" data-action="reload">読み込み直す</button>
+</div>
+</section>
+<section class="control-deck" aria-label="発射操作">
+<p class="event-line" data-event role="status" aria-live="polite">名前を入力して、ゲームを始めよう。</p>
+<div class="power-control">
+<label for="power">発射の強さ <output data-power-value>95</output>
+</label>
+<input id="power" type="range" min="0" max="100" value="95" disabled />
+<div class="power-labels">
+<span>弱め</span>
+<span>強め</span>
+</div>
+</div>
+<div class="fire-row">
+<button type="button" class="fire-button" data-action="fire" disabled>
+<strong>押している間、発射</strong>
+<span>1発 −10点</span>
+</button>
+<button type="button" class="stop-button" data-action="finish" disabled>ここで<br />終える</button>
+</div>
+</section>
+<dialog class="game-dialog start-dialog" data-dialog="start" aria-labelledby="start-title">
+<form method="dialog" data-start-form>
+<p class="eyebrow">90秒のスコアアタック</p>
+<h2 id="start-title">狙って、ためて、<br />
+<em>大当たり。</em>
+</h2>
+<p>強さを調整して、玉を打つ。中央に入ると図柄が回り、3つそろえば大当たり。</p>
+<p class="start-payoff">大当たり中は、光る得点口で一気に稼ごう。</p>
+<label for="player-name">表示名</label>
+<input id="player-name" type="text" maxlength="20" autocomplete="nickname" placeholder="名前を入力してください" required />
+<p class="form-status" data-name-status role="status">
+</p>
+<button type="submit" class="primary-button" data-action="start" disabled>ゲームを始める</button>
+<div class="dialog-links">
+<button type="button" data-action="share-home">シェア</button>
+<a href="https://chameleonjp-lab.github.io/chameleonjp_lab/" target="_blank" rel="noopener noreferrer">実験場へ</a>
+</div>
+</form>
+</dialog>
+<dialog class="game-dialog" data-dialog="help" aria-labelledby="help-title">
+<h2 id="help-title">遊び方</h2>
+<ol class="help-steps">
+<li>
+<strong>強さを動かして、狙う。</strong>
+<p>つまみで玉の飛び方を変えます。発射ボタンを押している間だけ、玉を打ちます。</p>
+</li>
+<li>
+<strong>中央に入れて、図柄を回す。</strong>
+<p>保留は4件まで。左右がそろうとリーチ。真ん中もそろえば大当たりです。</p>
+</li>
+<li>
+<strong>大当たり中は、光る得点口へ。</strong>
+<p>得点口が6秒間開き、入るたびに＋100点。継続判定に成功すると、さらに6秒。ラッシュは最大3区間です。</p>
+</li>
+</ol>
+<dl class="rules-table">
+<div>
+<dt>発射</dt>
+<dd>−10点 / 1玉</dd>
+</div>
+<div>
+<dt>中央入賞（保留に空き）</dt>
+<dd>＋50点 / ＋3玉</dd>
+</div>
+<div>
+<dt>大当たり</dt>
+<dd>＋1,500点 / ＋30玉</dd>
+</div>
+<div>
+<dt>通常の抽選</dt>
+<dd>1/5。5連続外れの次は保証</dd>
+</div>
+<div>
+<dt>ラッシュ継続</dt>
+<dd>1/2 / 最大3区間</dd>
+</div>
+</dl>
+<p class="help-note">保留が満タンの時と90秒終了後は、中央入賞の得点・払い玉がありません。満タンなら発射を休めます。大当たり中は、開いた得点口が狙い目です。持ち玉も保留もなくなると、その時点で終了します。</p>
+<p class="help-note">5回続けて外れると、次は必ず大当たり。チャージは画面に表示します。90秒後は残った玉と保留を精算します。最後のラッシュは1系列まで遊べ、後続の大当たりは得点として受け取れます。「ここで終える」なら保留の当たり点を受け取って終了します。</p>
+<p class="help-note">スコアはマイナスにもなります。お金・購入・有料通貨はありません。図柄は抽選で決まり、止める操作は不要です。</p>
+<p class="help-note">キーボード：Spaceで発射、← →で強さを調整、Escで一時停止。</p>
+<label class="setting-toggle">
+<input type="checkbox" data-reduced-motion /> 光と動きを控えめにする</label>
+<button type="button" class="primary-button" data-action="close-help">ゲームに戻る</button>
+</dialog>
+<dialog class="game-dialog" data-dialog="pause" aria-labelledby="pause-title">
+<p class="eyebrow">PAUSE</p>
+<h2 id="pause-title">一時停止中</h2>
+<p>玉・抽選・残り時間は止まっています。</p>
+<button type="button" class="primary-button" data-action="resume">つづける</button>
+<button type="button" class="text-button" data-action="finish-paused">今回の結果へ</button>
+</dialog>
+<dialog class="game-dialog result-dialog" data-dialog="result" aria-labelledby="result-title">
+<p class="eyebrow">RESULT</p>
+<h2 id="result-title">今回の結果</h2>
+<p class="result-player" data-result-player>
+</p>
+<p class="result-end-note" data-result-end-note></p>
+<strong class="result-score" data-result-score>0</strong>
+<p class="result-unit">点</p>
+<dl class="result-stats">
+<div>
+<dt>大当たり</dt>
+<dd data-result-jackpots>0回</dd>
+</div>
+<div>
+<dt>中央入賞</dt>
+<dd data-result-starts>0回</dd>
+</div>
+<div>
+<dt>得点口の入賞</dt>
+<dd data-result-attacker>0回</dd>
+</div>
+<div>
+<dt>ラッシュ継続</dt>
+<dd data-result-rush>0回</dd>
+</div>
+<div>
+<dt>発射</dt>
+<dd data-result-fired>0発</dd>
+</div>
+<div>
+<dt>副入賞</dt>
+<dd data-result-side>0回</dd>
+</div>
+</dl>
+<dl class="result-breakdown" data-result-breakdown>
+</dl>
+<p class="result-hint" data-result-hint>
+</p>
+<button type="button" class="primary-button" data-action="restart">もう一度遊ぶ</button>
+<button type="button" class="secondary-button" data-action="share-result">結果をシェア</button>
+<textarea data-share-text readonly aria-label="結果のシェア文" hidden>
+</textarea>
+<p class="form-status" data-share-status role="status">
+</p>
+<details class="ranking-details">
+<summary>ランキング</summary>
+<p data-ranking-status>ランキングを確認します。</p>
+<ol data-ranking-list>
+</ol>
+</details>
+<a class="lab-link" href="https://chameleonjp-lab.github.io/chameleonjp_lab/" target="_blank" rel="noopener noreferrer">カメレオンJPの実験場へ</a>
+</dialog>
+</main>
+<noscript>このゲームを遊ぶにはJavaScriptを有効にしてください。</noscript>
+<script type="module" src="/src/main.ts">
+</script>
+</body>
 </html>

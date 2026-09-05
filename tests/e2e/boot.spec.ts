@@ -1,93 +1,121 @@
-import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
+const rootSelector = "[data-app-root]";
+const fireSelector = "[data-action=fire]";
 const pageErrors = new WeakMap<Page, string[]>();
 
-async function readG1B(page: Page) {
-  return page.evaluate(() => {
-    const api = window.__DOPPAN_G1B__;
-    if (api === undefined) {
-      throw new Error("window.__DOPPAN_G1B__ is not available");
-    }
-    return {
-      loop: api.getLoopDiagnostics(),
-      pixi: api.getPixiDiagnostics(),
-      prototype: api.getPrototypeDiagnostics(),
-      snapshot: api.getSnapshot(),
-    };
-  });
+type ViewportCase = {
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+};
+
+const viewports: readonly ViewportCase[] = [
+  { name: "402x874", width: 402, height: 874 },
+  { name: "320x568", width: 320, height: 568 },
+  { name: "landscape844x390", width: 844, height: 390 },
+];
+
+type RootDiagnostics = {
+  readonly ready: string | undefined;
+  readonly phase: string | undefined;
+  readonly paused: string | undefined;
+  readonly fired: string | undefined;
+  readonly startEntries: string | undefined;
+  readonly jackpots: string | undefined;
+  readonly attackerEntries: string | undefined;
+};
+
+function root(page: Page) {
+  return page.locator(rootSelector);
 }
 
-async function startGame(page: Page): Promise<void> {
-  await page.locator("#player-name").fill("テストプレイヤー");
-  await page.getByRole("button", { name: "ゲームを始める" }).click();
-  await expect(page.locator("[data-status]")).toHaveText("球1 発射待ち");
+async function readRootDiagnostics(page: Page): Promise<RootDiagnostics> {
+  return page.locator(rootSelector).evaluate((element) => ({
+    ready: element.getAttribute("data-ready") ?? undefined,
+    phase: element.getAttribute("data-phase") ?? undefined,
+    paused: element.getAttribute("data-paused") ?? undefined,
+    fired: element.getAttribute("data-fired") ?? undefined,
+    startEntries: element.getAttribute("data-start-entries") ?? undefined,
+    jackpots: element.getAttribute("data-jackpots") ?? undefined,
+    attackerEntries: element.getAttribute("data-attacker-entries") ?? undefined,
+  }));
 }
 
-async function waitForG1B(page: Page): Promise<void> {
-  await expect
-    .poll(() => page.evaluate(() => window.__DOPPAN_G1B__ !== undefined))
-    .toBe(true);
-  await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(1);
-  await expect
-    .poll(async () => (await readG1B(page)).pixi?.rendererName ?? null)
-    .toBe("webgl");
+async function installDeterministicClock(page: Page): Promise<void> {
+  await page.clock.install({ time: new Date("2026-09-05T00:00:00.000Z") });
 }
 
-async function dispatchTouch(
-  page: Page,
-  action: "plunger" | "rightFlipper",
-  phase: "pointerdown" | "pointerup",
-  pointerId: number,
-): Promise<void> {
-  const button = page.locator(`[data-input-action='${action}']`);
-  await button.evaluate((element) => {
-    // Synthetic pointer events do not have a browser pointer capture slot.
-    element.setPointerCapture = () => undefined;
-  });
-  await button.dispatchEvent(phase, {
-    pointerId,
-    pointerType: "touch",
-    isPrimary: true,
-    buttons: phase === "pointerdown" ? 1 : 0,
-  });
-}
-
-async function runClockUntil(
-  page: Page,
-  predicate: (snapshot: Awaited<ReturnType<typeof readG1B>>["snapshot"]) => boolean,
-  timeoutMs: number,
-): Promise<Awaited<ReturnType<typeof readG1B>>> {
-  for (let elapsedMs = 0; elapsedMs < timeoutMs; elapsedMs += 17) {
-    await page.clock.runFor(17);
-    const observation = await readG1B(page);
-    if (predicate(observation.snapshot)) {
-      return observation;
-    }
+async function runClock(page: Page, durationMs: number): Promise<void> {
+  // The runtime intentionally pauses after a dropped frame over 250 ms. Keep
+  // every virtual advance below that boundary so this remains a normal play.
+  for (let remaining = durationMs; remaining > 0; remaining -= 100) {
+    await page.clock.runFor(Math.min(100, remaining));
   }
-  throw new Error(`condition was not reached within ${timeoutMs} ms`);
 }
 
-function resourceCounts(observation: Awaited<ReturnType<typeof readG1B>>) {
-  return {
-    bodyCount: observation.prototype.physics.bodyCount,
-    fixtureCount: observation.prototype.physics.fixtureCount,
-    jointCount: observation.prototype.physics.jointCount,
-  };
+async function advanceUntil(
+  page: Page,
+  predicate: () => Promise<boolean>,
+  timeoutMs: number,
+  label: string,
+): Promise<void> {
+  for (let elapsedMs = 0; elapsedMs < timeoutMs; elapsedMs += 100) {
+    await runClock(page, 100);
+    if (await predicate()) return;
+  }
+  throw new Error(`${label} was not reached within ${timeoutMs} ms`);
 }
 
-function assertSingleRuntime(
-  observation: Awaited<ReturnType<typeof readG1B>>,
-): void {
-  expect(observation.loop.running).toBe(true);
-  expect(observation.loop.activeLoopCount).toBe(1);
-  expect(observation.pixi?.rendererName).toBe("webgl");
-  expect(observation.pixi?.tickerPresent).toBe(false);
-  expect(observation.pixi?.tickerAutoStart).toBe(false);
-  expect(observation.pixi?.tickerStarted).toBe(false);
+async function boot(page: Page, url = "/"): Promise<void> {
+  await page.goto(url);
+  await expect(root(page)).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(1);
+  await expect(page.locator("[data-dialog=start]")).toBeVisible();
 }
 
-test.describe("G3 / GA vertical slice boot surface", () => {
+async function startGame(page: Page, name = "テストプレイヤー"): Promise<void> {
+  const nameInput = page.locator("#player-name");
+  await nameInput.fill(name);
+  await expect(page.locator("[data-action=start]")).toBeEnabled();
+  await page.locator("[data-action=start]").click();
+  await expect(root(page)).toHaveAttribute("data-phase", "playing");
+  await expect(page.locator("[data-dialog=start]")).toBeHidden();
+  await expect(page.locator(fireSelector)).toBeEnabled();
+}
+
+async function holdFire(page: Page, durationMs = 600): Promise<number> {
+  const fire = page.locator(fireSelector);
+  await fire.scrollIntoViewIfNeeded();
+  const bounds = await fire.boundingBox();
+  if (bounds === null) throw new Error("fire button has no layout box");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await expect(fire).toHaveAttribute("data-firing", "true");
+  await runClock(page, durationMs);
+  const firedWhileHeld = Number((await readRootDiagnostics(page)).fired ?? "0");
+  await page.mouse.up();
+  await expect(fire).toHaveAttribute("data-firing", "false");
+  return firedWhileHeld;
+}
+
+async function screenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  await mkdir(resolve("test-results"), { recursive: true });
+  await page.screenshot({
+    path: resolve("test-results", `pachi-${testInfo.project.name}-${name}.png`),
+    fullPage: false,
+  });
+}
+
+function numericTime(text: string | null): number {
+  const value = Number.parseInt(text ?? "", 10);
+  if (!Number.isFinite(value)) throw new Error(`Could not parse game time: ${text ?? ""}`);
+  return value;
+}
+
+test.describe("90秒パチンコ体験", () => {
   test.beforeEach(({ page }) => {
     const errors: string[] = [];
     pageErrors.set(page, errors);
@@ -98,406 +126,352 @@ test.describe("G3 / GA vertical slice boot surface", () => {
     expect(pageErrors.get(page) ?? []).toEqual([]);
   });
 
-  test("auto-starts one loop with Pixi ticker disabled", async ({ page }) => {
-    await page.goto("/");
-    await waitForG1B(page);
-    await expect(page.locator("[data-canvas-host]")).toHaveAttribute("data-render-mode", "player");
+  test("boots, rejects an empty name, and starts from a display name", async ({ page }) => {
+    await boot(page);
 
-    const boot = await readG1B(page);
-    assertSingleRuntime(boot);
-    expect(boot.snapshot.baseState).toBe("LaunchReady");
-    expect(boot.snapshot.suspensionState).toBe("None");
-    expect(boot.prototype.inputOwners).toBe(0);
-    expect(boot.prototype.physics.safeStopped).toBe(false);
-    expect(boot.pixi?.renderCount).toBeGreaterThanOrEqual(1);
-    await expect(page.locator("[data-graybox='target']")).toHaveText("左の安全ショット / 右の安全ショット");
-    await expect(page.locator("[data-graybox='return']")).toHaveText("中央の基本戻り");
-    await expect(page.locator("[data-game-overlay='start']")).toBeVisible();
-    await expect(page.locator("[data-input-action='leftFlipper']")).toBeDisabled();
-    await expect(page.locator("[data-diagnostic='hz']")).toBeHidden();
-    await expect(page.locator(".graybox-guide")).toHaveText("黄色く光る目標へ、球をフリッパーで返します。成功すると戻り道が変わります。");
-    await expect(page.locator("[data-graybox='progress']")).toHaveText("0 / 5");
-    expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
-    await expect(page.locator("[data-status]")).toHaveText("ゲーム開始待ち");
-    await expect(page.locator("[data-status]")).toHaveAttribute("data-active", "false");
-    await expect(page.locator("[data-build-environment]")).toBeHidden();
-  });
-
-  test("exposes the three-ball session and an in-memory playtest report", async ({ page }) => {
-    await page.goto("/");
-    await waitForG1B(page);
-
-    const ga = await page.evaluate(() => {
-      const api = window.__DOPPAN_GA__;
-      if (api === undefined) {
-        throw new Error("window.__DOPPAN_GA__ is not available");
-      }
-      return {
-        snapshot: api.getSnapshot(),
-        report: api.getPlaytestReport(),
-        reportJson: api.getPlaytestReportJson(),
-      };
+    const initial = await readRootDiagnostics(page);
+    expect(initial).toMatchObject({
+      ready: "true",
+      phase: "idle",
+      paused: "false",
+      fired: "0",
+      startEntries: "0",
+      jackpots: "0",
+      attackerEntries: "0",
     });
+    await expect(page.locator("[data-time]")).toHaveText("90秒");
+    await expect(page.locator("[data-stock]")).toHaveText("80");
 
-    expect(ga.snapshot.phase).toBe("launch-ready");
-    expect(ga.snapshot.totalBalls).toBe(3);
-    expect(ga.snapshot.ballsRemaining).toBe(3);
-    expect(ga.report.ruleVersion).toBe("ga-vertical-slice-1");
-    expect(ga.report.events).toEqual([{ type: "game-start", physicsStepId: 0 }]);
-    expect(ga.reportJson).toContain('"totalBalls": 3');
-    expect(await page.evaluate(() => window.localStorage.length)).toBe(0);
-  });
-
-  test("routes a fully charged Space launch into the main board", async ({ page }) => {
-    // This scenario verifies input -> fixed-step -> Planck routing, not the
-    // performance of a traced CI worker. Playwright's clock keeps RAF,
-    // performance, timers, and event timestamps on the same deterministic
-    // timeline while the production dropped-frame policy remains unchanged.
-    await page.clock.install({ time: new Date("2026-08-11T00:00:00.000Z") });
-    await page.clock.pauseAt(new Date("2026-08-11T00:00:01.000Z"));
-    await page.goto("/");
-    await waitForG1B(page);
+    const nameInput = page.locator("#player-name");
+    await nameInput.fill("");
+    await page.locator("[data-action=start]").click();
+    expect(await nameInput.evaluate((element) => !(element as HTMLInputElement).checkValidity())).toBe(true);
+    await expect(root(page)).toHaveAttribute("data-phase", "idle");
+    await expect(page.locator("[data-dialog=start]")).toBeVisible();
 
     await startGame(page);
+    await expect(page.locator("#power")).toBeEnabled();
+    await expect(page.locator("[data-action=pause]")).toBeEnabled();
+    await expect(page.locator("[data-action=finish]")).toBeEnabled();
+    await expect(page.locator("[data-event]")).toContainText("強さを調整");
+  });
+
+  test("uses a real pointer hold to fire and stops immediately on pointerup", async ({ page }) => {
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=77");
+    await startGame(page);
+
+    const power = page.locator("#power");
+    await power.fill("82");
+    await expect(page.locator("[data-power-value]")).toHaveText("82");
+
+    const firedWhileHeld = await holdFire(page);
+    expect(firedWhileHeld).toBeGreaterThan(0);
+    const released = await readRootDiagnostics(page);
+    expect(released.fired).toBe(String(firedWhileHeld));
+    expect(released.phase).toBe("playing");
+
+    await runClock(page, 400);
+    const afterRelease = await readRootDiagnostics(page);
+    expect(afterRelease.fired).toBe(released.fired);
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+  });
+
+  test("routes Space keydown/up and releases a real pointer on cancel and lost capture", async ({ page }) => {
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=77");
+    await startGame(page);
+
+    const fire = page.locator(fireSelector);
     await page.keyboard.down("Space");
-    await page.clock.runFor(1_250);
-    expect((await readG1B(page)).prototype.launchCharge).toBe(1);
+    await expect(fire).toHaveAttribute("data-firing", "true");
+    await runClock(page, 500);
+    const firedBySpace = Number((await readRootDiagnostics(page)).fired ?? "0");
+    expect(firedBySpace).toBeGreaterThan(0);
     await page.keyboard.up("Space");
-    // Two 16 ms clock frames guarantee at least one 60 Hz fixed step after
-    // release; a single clock frame is shorter than the 16.667 ms step.
-    await page.clock.runFor(34);
+    await expect(fire).toHaveAttribute("data-firing", "false");
+    await runClock(page, 400);
+    expect((await readRootDiagnostics(page)).fired).toBe(String(firedBySpace));
 
-    expect((await readG1B(page)).snapshot.baseState).toBe("Playing");
-    await page.clock.runFor(1_100);
-    const routed = await readG1B(page);
-    expect(routed.snapshot.ball.position.x).toBeLessThan(6.64);
-    expect(routed.snapshot.suspensionState).toBe("None");
-    expect(routed.prototype.runIntegrity).toBe("valid");
-    expect(routed.prototype.physics.safeStopped).toBe(false);
-    expect(routed.prototype.inputLatency.inputToPhysics.sampleCount).toBeGreaterThan(0);
-    expect(routed.prototype.inputLatency.inputToDraw.sampleCount).toBeGreaterThan(0);
+    const bounds = await fire.boundingBox();
+    if (bounds === null) throw new Error("fire button has no layout box");
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await page.mouse.down();
+    await expect(fire).toHaveAttribute("data-firing", "true");
+    // Mouse pointer IDs are stable at 1 for the real browser pointer used by
+    // page.mouse. The down event above supplies the actual capture slot;
+    // dispatching cancel exercises the production release boundary.
+    await fire.dispatchEvent("pointercancel", { pointerId: 1, pointerType: "mouse" });
+    await expect(fire).toHaveAttribute("data-firing", "false");
+    await page.mouse.up();
+
+    await page.mouse.down();
+    await expect(fire).toHaveAttribute("data-firing", "true");
+    await fire.dispatchEvent("lostpointercapture", { pointerId: 1, pointerType: "mouse" });
+    await expect(fire).toHaveAttribute("data-firing", "false");
+    await page.mouse.up();
   });
 
-  test("turns touch launch and a visible flipper control into score and a changed route", async ({ page }) => {
-    await page.clock.install({ time: new Date("2026-08-11T00:00:00.000Z") });
-    await page.clock.pauseAt(new Date("2026-08-11T00:00:01.000Z"));
-    await page.goto("/");
-    await waitForG1B(page);
+  test("shows the seed-77 START to reach, BONUS, attacker, RUSH judge, and final result path", async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=77");
     await startGame(page);
 
-    await dispatchTouch(page, "plunger", "pointerdown", 51);
-    await page.clock.runFor(1_250);
-    expect((await readG1B(page)).prototype.launchCharge).toBe(1);
-    await dispatchTouch(page, "plunger", "pointerup", 51);
-    await page.clock.runFor(34);
+    const fire = page.locator(fireSelector);
+    await fire.scrollIntoViewIfNeeded();
+    const bounds = await fire.boundingBox();
+    if (bounds === null) throw new Error("fire button has no layout box");
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await page.mouse.down();
 
-    await runClockUntil(
-      page,
-      (snapshot) =>
-        snapshot.ball.linearVelocity.y < 0 &&
-        snapshot.ball.position.x < 6.5 &&
-        snapshot.ball.position.y <= 3 &&
-        snapshot.ball.position.y > 1.5,
-      1_500,
-    );
-    await dispatchTouch(page, "rightFlipper", "pointerdown", 52);
-    // Keep the control down across seven 60 Hz fixed steps. A nominal 100 ms
-    // clock window can straddle the queued pointer event and apply only five.
-    await page.clock.runFor(117);
-    await dispatchTouch(page, "rightFlipper", "pointerup", 52);
-
-    await runClockUntil(
-      page,
-      (snapshot) => snapshot.graybox.score === 100,
-      1_500,
-    );
-    await page.clock.runFor(34);
-
-    expect((await readG1B(page)).snapshot.graybox.completedShotIds).toEqual(["L0"]);
-    await expect(page.locator("[data-graybox='score']")).toHaveText("100");
-    await expect(page.locator("[data-graybox='progress']")).toHaveText("1 / 5");
-    await expect(page.locator("[data-graybox='target']")).toHaveText("右の中核ショット");
-    await expect(page.locator("[data-graybox='return']")).toHaveText("左の安全戻り");
-    expect((await readG1B(page)).prototype.runIntegrity).toBe("valid");
-  });
-
-  test("routes keyboard and touch input, including release", async ({ page }) => {
-    await page.goto("/");
-    await waitForG1B(page);
-
-    await startGame(page);
-    await page.keyboard.down("z");
-    await expect
-      .poll(async () =>
-        (await readG1B(page)).snapshot.flippers.find((flipper) => flipper.side === "left")?.active ??
-        false,
-      )
-      .toBe(true);
-    await page.keyboard.up("z");
-    await expect
-      .poll(async () =>
-        (await readG1B(page)).snapshot.flippers.find((flipper) => flipper.side === "left")?.active ??
-        false,
-      )
-      .toBe(false);
-
-    const rightFlipper = page.locator("[data-input-action='rightFlipper']");
-    await rightFlipper.evaluate((element) => {
-      // Synthetic pointer events do not have a browser pointer capture slot.
-      // Keep the binding test focused on ownership and release semantics.
-      element.setPointerCapture = () => undefined;
-    });
-    await rightFlipper.dispatchEvent("pointerdown", {
-      pointerId: 41,
-      pointerType: "touch",
-      isPrimary: true,
-      buttons: 1,
-    });
-    await expect
-      .poll(async () => (await readG1B(page)).prototype.inputOwners)
-      .toBe(1);
-    await expect
-      .poll(async () =>
-        (await readG1B(page)).snapshot.flippers.find((flipper) => flipper.side === "right")?.active ??
-        false,
-      )
-      .toBe(true);
-
-    await rightFlipper.dispatchEvent("pointerup", {
-      pointerId: 41,
-      pointerType: "touch",
-      isPrimary: true,
-      buttons: 0,
-    });
-    await expect
-      .poll(async () => (await readG1B(page)).prototype.inputOwners)
-      .toBe(0);
-    await expect
-      .poll(async () =>
-        (await readG1B(page)).snapshot.flippers.find((flipper) => flipper.side === "right")?.active ??
-        false,
-      )
-      .toBe(false);
-
-    // The browser commonly follows pointerup with lostpointercapture. The
-    // second notification must not create a second release or resurrect input.
-    await rightFlipper.dispatchEvent("lostpointercapture", {
-      pointerId: 41,
-      pointerType: "touch",
-    });
-    await expect
-      .poll(async () => (await readG1B(page)).prototype.inputOwners)
-      .toBe(0);
-
-    await rightFlipper.dispatchEvent("pointerdown", {
-      pointerId: 41,
-      pointerType: "touch",
-      isPrimary: true,
-      buttons: 1,
-    });
-    await expect
-      .poll(async () => (await readG1B(page)).prototype.inputOwners)
-      .toBe(1);
-    await rightFlipper.dispatchEvent("pointercancel", {
-      pointerId: 41,
-      pointerType: "touch",
-    });
-    await expect
-      .poll(async () => (await readG1B(page)).prototype.inputOwners)
-      .toBe(0);
-  });
-
-  test("pauses and resumes from Escape without changing the base state", async ({ page }) => {
-    await page.goto("/");
-    await waitForG1B(page);
-
-    await startGame(page);
-    const beforeBaseState = (await readG1B(page)).snapshot.baseState;
-    await page.keyboard.press("Escape");
-    await expect
-      .poll(async () => (await readG1B(page)).snapshot.suspensionState)
-      .toBe("ManualPause");
-    const paused = await readG1B(page);
-    expect(paused.snapshot.baseState).toBe(beforeBaseState);
-    expect(paused.loop.activeLoopCount).toBe(1);
-
-    await page.keyboard.press("Escape");
-    await expect
-      .poll(async () => (await readG1B(page)).snapshot.suspensionState)
-      .toBe("None");
-    expect((await readG1B(page)).snapshot.baseState).toBe("LaunchReady");
-  });
-
-  test("switches deterministic physics between 60 Hz and 120 Hz", async ({ page }) => {
-    await page.goto("/?debug=1");
-    await waitForG1B(page);
-    await expect(page.locator("[data-canvas-host]")).toHaveAttribute("data-render-mode", "diagnostic");
-
-    const hz = page.locator("[data-physics-hz]");
-    await expect.poll(async () => (await readG1B(page)).prototype.fixedStep.physicsStepHz).toBe(60);
-
-    await hz.selectOption("120");
-    await expect
-      .poll(async () => (await readG1B(page)).prototype.fixedStep.physicsStepHz)
-      .toBe(120);
-    expect((await readG1B(page)).snapshot.baseState).toBe("LaunchReady");
-
-    await hz.selectOption("60");
-    await expect
-      .poll(async () => (await readG1B(page)).prototype.fixedStep.physicsStepHz)
-      .toBe(60);
-    expect((await readG1B(page)).snapshot.baseState).toBe("LaunchReady");
-    assertSingleRuntime(await readG1B(page));
-  });
-
-  test("reinitializes the renderer twenty times without changing resources or loop count", async ({
-    page,
-  }) => {
-    test.setTimeout(120_000);
-    await page.goto("/");
-    await waitForG1B(page);
-
-    const initial = await readG1B(page);
-    const resources = resourceCounts(initial);
-    for (let index = 0; index < 20; index += 1) {
-      const initialized = await page.evaluate(async () => {
-        const api = window.__DOPPAN_G1B__;
-        return api === undefined ? false : await api.reinitializeRenderer();
-      });
-      expect(initialized).toBe(true);
-      await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(1);
-      await expect
-        .poll(async () => (await readG1B(page)).loop.activeLoopCount)
-        .toBe(1);
-
-      const observation = await readG1B(page);
-      assertSingleRuntime(observation);
-      expect(resourceCounts(observation)).toEqual(resources);
-      expect(observation.pixi?.renderCount).toBeGreaterThanOrEqual(1);
-    }
-  });
-
-  test("safe-stops when WebGL initialization is unavailable", async ({ page }) => {
-    await page.addInitScript(() => {
-      const descriptor = Object.getOwnPropertyDescriptor(
-        HTMLCanvasElement.prototype,
-        "getContext",
-      );
-      const original = descriptor?.value as
-        | ((this: HTMLCanvasElement, type: string, ...arguments_: unknown[]) => unknown)
-        | undefined;
-      if (original === undefined) {
-        throw new Error("HTMLCanvasElement.getContext is unavailable");
+    let sawStart = false;
+    let sawReach = false;
+    let sawBonus = false;
+    let sawAttacker = false;
+    let sawJudge = false;
+    // Observe the real sequence. A naturally losing reach is allowed before
+    // the first jackpot; it must not be mistaken for a promised win.
+    for (let elapsed = 0; elapsed < 60_000; elapsed += 100) {
+      await runClock(page, 100);
+      const visible = await root(page).evaluate((element) => ({
+        starts: Number(element.getAttribute("data-start-entries")),
+        jackpots: Number(element.getAttribute("data-jackpots")),
+        attackers: Number(element.getAttribute("data-attacker-entries")),
+        spin: element.getAttribute("data-spin-stage"),
+        rush: element.getAttribute("data-rush-stage"),
+      }));
+      sawStart ||= visible.starts > 0;
+      sawReach ||= visible.spin === "reach";
+      sawAttacker ||= visible.attackers > 0;
+      if (!sawBonus && visible.jackpots > 0 && visible.rush === "open") {
+        sawBonus = true;
+        await expect(page.locator("[data-mode]")).toHaveText(/RUSH [1-3] \/ 3/);
+        await expect(page.locator("[data-spin-detail]")).toContainText("得点口");
+        await screenshot(page, testInfo, "bonus");
       }
-      Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
-        configurable: true,
-        value(this: HTMLCanvasElement, type: string, ...arguments_: unknown[]) {
-          if (type === "webgl" || type === "webgl2" || type === "experimental-webgl") {
-            return null;
-          }
-          return original.call(this, type, ...arguments_);
-        },
-      });
+      if (!sawJudge && visible.rush === "judge") {
+        sawJudge = true;
+        await expect(page.locator("[data-spin-title]")).toHaveText(/^(?:RUSH 継続！|RUSH 終了|継続判定 [1-3] \/ 3)$/);
+        await screenshot(page, testInfo, "judge");
+      }
+      if (sawStart && sawReach && sawBonus && sawAttacker && sawJudge) break;
+    }
+    expect({ sawStart, sawReach, sawBonus, sawAttacker, sawJudge }).toEqual({
+      sawStart: true, sawReach: true, sawBonus: true, sawAttacker: true, sawJudge: true,
     });
-    await page.goto("/");
 
-    await expect(page.locator("[data-webgl-error]")).toBeVisible();
-    await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(0);
-    await expect.poll(async () => (await readG1B(page)).loop.activeLoopCount).toBe(0);
-    const failed = await readG1B(page);
-    expect(failed.loop.running).toBe(false);
-    expect(failed.pixi).toBeNull();
-    expect(failed.snapshot.baseState).toBe("FatalRecovery");
-    expect(failed.prototype.inputOwners).toBe(0);
-    expect(failed.prototype.runIntegrity).toBe("invalid");
-    expect(await page.locator("button[data-input-action]").evaluateAll(
-      (buttons) => buttons.every((button) => (button as HTMLButtonElement).disabled),
-    )).toBe(true);
-    expect(await page.evaluate(async () => window.__DOPPAN_G1B__?.reinitializeRenderer())).toBe(false);
-    expect((await readG1B(page)).loop.activeLoopCount).toBe(0);
-    await page.keyboard.press("Escape");
-    expect((await readG1B(page)).snapshot.baseState).toBe("FatalRecovery");
+    await page.mouse.up();
+    await expect(fire).toHaveAttribute("data-firing", "false");
+    await page.locator("[data-action=finish]").click();
+    await advanceUntil(page, async () => (await readRootDiagnostics(page)).phase === "result", 30_000, "final result");
+    await expect(root(page)).toHaveAttribute("data-phase", "result");
+    await expect(page.locator("[data-dialog=result]")).toBeVisible();
+    const final = await readRootDiagnostics(page);
+    expect(Number(final.startEntries ?? "0")).toBeGreaterThan(0);
+    expect(Number(final.jackpots ?? "0")).toBeGreaterThan(0);
+    expect(Number(final.attackerEntries ?? "0")).toBeGreaterThan(0);
   });
 
-  test("safe-stops on WebGL context loss", async ({ page }) => {
-    await page.goto("/");
-    await waitForG1B(page);
-    const canvas = page.locator("[data-canvas-host] canvas");
+  test("stops all play on a tab interruption and resumes from the pause dialog", async ({ page }) => {
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=77");
+    await startGame(page);
 
-    await canvas.dispatchEvent("webglcontextlost", { cancelable: true });
-    await expect(page.locator("[data-webgl-error]")).toBeVisible();
-    await expect
-      .poll(async () => (await readG1B(page)).snapshot.baseState)
-      .toBe("FatalRecovery");
-    await expect.poll(async () => (await readG1B(page)).loop.activeLoopCount).toBe(0);
-    const lost = await readG1B(page);
-    expect(lost.loop.running).toBe(false);
-    expect(lost.pixi).toBeNull();
-    expect(lost.snapshot.suspensionState).toBe("None");
-    expect(lost.prototype.inputOwners).toBe(0);
-    expect(lost.prototype.runIntegrity).toBe("invalid");
-    expect(await page.locator("button[data-input-action]").evaluateAll(
-      (buttons) => buttons.every((button) => (button as HTMLButtonElement).disabled),
-    )).toBe(true);
-    expect(await page.evaluate(async () => window.__DOPPAN_G1B__?.reinitializeRenderer())).toBe(false);
-    expect((await readG1B(page)).loop.activeLoopCount).toBe(0);
-    await page.keyboard.press("Escape");
-    expect((await readG1B(page)).snapshot.baseState).toBe("FatalRecovery");
+    const fire = page.locator(fireSelector);
+    await fire.scrollIntoViewIfNeeded();
+    const bounds = await fire.boundingBox();
+    if (bounds === null) throw new Error("fire button has no layout box");
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await page.mouse.down();
+    await runClock(page, 300);
+    const beforeInterruption = await readRootDiagnostics(page);
+    const timeBeforeInterruption = numericTime(await page.locator("[data-time]").textContent());
+    expect(Number(beforeInterruption.fired ?? "0")).toBeGreaterThan(0);
+
+    // This is the browser lifecycle signal used by the app when a tab loses
+    // focus. It exercises the public event boundary instead of changing state.
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await expect(root(page)).toHaveAttribute("data-paused", "true");
+    await expect(page.locator("[data-dialog=pause]")).toBeVisible();
+    await expect(fire).toBeDisabled();
+    await expect(fire).toHaveAttribute("data-firing", "false");
+
+    await runClock(page, 700);
+    const whilePaused = await readRootDiagnostics(page);
+    expect(whilePaused.fired).toBe(beforeInterruption.fired);
+    expect(numericTime(await page.locator("[data-time]").textContent())).toBe(timeBeforeInterruption);
+    await page.mouse.up();
+
+    await page.locator("[data-action=resume]").click();
+    await expect(root(page)).toHaveAttribute("data-paused", "false");
+    await expect(page.locator("[data-dialog=pause]")).toBeHidden();
+    await expect(page.locator("#power")).toBeEnabled();
+    await runClock(page, 1_200);
+    expect(numericTime(await page.locator("[data-time]").textContent())).toBeLessThan(timeBeforeInterruption);
   });
 
-  for (const width of [320, 390, 430]) {
-    test(`fits ${width}px portrait width without overflow or hidden playfield`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 720 });
-      await page.goto("/");
-      await waitForG1B(page);
-      const dimensions = await page.evaluate(() => {
-        const canvas = document.querySelector<HTMLElement>("[data-canvas-host]");
-        const controls = document.querySelector<HTMLElement>(".game-stage .input-panel");
-        if (canvas === null || controls === null) {
-          throw new Error("playfield or controls are missing");
-        }
-        const canvasBox = canvas.getBoundingClientRect();
-        const controlsBox = controls.getBoundingClientRect();
+  test("finishes reliably and restarts with a fresh zeroed session", async ({ page }) => {
+    await boot(page, "/?debug=1&seed=77");
+    await startGame(page);
+
+    await page.locator("[data-action=finish]").click();
+    await expect(root(page)).toHaveAttribute("data-phase", "result");
+    await expect(page.locator("[data-dialog=result]")).toBeVisible();
+    await expect(page.locator("[data-result-player]")).toHaveText("テストプレイヤーさん");
+    await expect(page.locator("[data-result-score]")).toHaveText("0");
+
+    await page.locator("[data-action=restart]").click();
+    await expect(root(page)).toHaveAttribute("data-phase", "playing");
+    await expect(page.locator("[data-dialog=result]")).toBeHidden();
+    await expect(page.locator("[data-score]")).toHaveText("0");
+    await expect(page.locator("[data-stock]")).toHaveText("80");
+    expect(await readRootDiagnostics(page)).toMatchObject({
+      fired: "0",
+      startEntries: "0",
+      jackpots: "0",
+      attackerEntries: "0",
+    });
+  });
+
+  test("fits every required viewport, keeps controls tappable, and records visual artifacts", async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+
+    for (const viewport of viewports) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await boot(page, "/?debug=1&seed=77");
+      if (viewport.name === "402x874") await screenshot(page, testInfo, "402x874-before");
+
+      await startGame(page);
+      if (viewport.name === "402x874") await screenshot(page, testInfo, "402x874-after");
+      if (viewport.name !== "402x874") await screenshot(page, testInfo, viewport.name);
+
+      const layout = await page.evaluate(() => {
+        const visibleButtons = [...document.querySelectorAll("button")]
+          .map((button) => {
+            const rect = button.getBoundingClientRect();
+            return { width: rect.width, height: rect.height, visible: rect.width > 0 && rect.height > 0 };
+          })
+          .filter((button) => button.visible);
+        const canvas = document.querySelector("[data-canvas-host]")?.getBoundingClientRect();
         return {
           clientWidth: document.documentElement.clientWidth,
           scrollWidth: document.documentElement.scrollWidth,
-          canvasBottom: canvasBox.bottom,
-          controlsTop: controlsBox.top,
-          canvasHeight: canvasBox.height,
+          canvas: canvas === undefined ? null : { left: canvas.left, right: canvas.right, top: canvas.top, bottom: canvas.bottom },
+          visibleButtons,
         };
       });
-      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
-      expect(dimensions.canvasBottom).toBeLessThanOrEqual(dimensions.controlsTop);
-      expect(dimensions.canvasHeight).toBeGreaterThanOrEqual(470);
-    });
-  }
 
-  test("shows landscape guidance", async ({ page }) => {
-    await page.setViewportSize({ width: 844, height: 390 });
-    await page.goto("/");
-    await expect(page.locator(".landscape-hint")).toBeVisible();
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+      expect(layout.canvas).not.toBeNull();
+      expect(layout.canvas?.left ?? -1).toBeGreaterThanOrEqual(0);
+      expect(layout.canvas?.right ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(layout.clientWidth);
+      for (const button of layout.visibleButtons) {
+        expect(button.width).toBeGreaterThanOrEqual(44);
+        expect(button.height).toBeGreaterThanOrEqual(44);
+      }
+    }
   });
 
-  test("keeps the public root guide separate and mobile-safe", async ({ page }) => {
-    const rootGuide = await readFile(
-      new URL("../../pages/root/root-guide.html", import.meta.url),
-      "utf8",
-    );
+  test("toggles sound and honors reduced-motion preferences", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript(() => {
+      class TestAudioContext {
+        public state: AudioContextState = "suspended";
+        public currentTime = 0;
+        public readonly destination = {};
 
-    for (const width of [320, 390, 430]) {
-      await page.setViewportSize({ width, height: 720 });
-      await page.setContent(rootGuide);
-      await expect(page.locator("main")).toContainText("一般公開前");
-      await expect(page.locator("a")).toHaveCount(0);
-      await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
-        "content",
-        "noindex, nofollow, noarchive",
-      );
-      const dimensions = await page.evaluate(() => ({
-        clientWidth: document.documentElement.clientWidth,
-        scrollWidth: document.documentElement.scrollWidth,
-      }));
-      expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
-    }
+        public resume(): Promise<void> {
+          this.state = "running";
+          return Promise.resolve();
+        }
+
+        public close(): Promise<void> {
+          this.state = "closed";
+          return Promise.resolve();
+        }
+      }
+      Object.defineProperty(window, "AudioContext", { configurable: true, value: TestAudioContext });
+    });
+    await boot(page);
+    await startGame(page);
+
+    const sound = page.locator("[data-action=sound]");
+    await expect(sound).toHaveAttribute("aria-pressed", "false");
+    await sound.click();
+    await expect(sound).toHaveText("音 ON");
+    await expect(sound).toHaveAttribute("aria-pressed", "true");
+    await sound.click();
+    await expect(sound).toHaveText("音 OFF");
+    await expect(sound).toHaveAttribute("aria-pressed", "false");
+
+    await page.locator("[data-action=help]").click();
+    await expect(page.locator("[data-dialog=help]")).toBeVisible();
+    const reduced = page.locator("[data-reduced-motion]");
+    await expect(reduced).toBeChecked();
+    await reduced.uncheck();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("doppan:pachi:reduced-motion"))).toBe("false");
+    await reduced.check();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("doppan:pachi:reduced-motion"))).toBe("true");
+  });
+
+  test("renders historical ranking values as text and never submits a new score", async ({ page }) => {
+    const rankingUrl = "https://mlpnjgezrnhdxsxolyzj.supabase.co/rest/v1/rpc/get_best_score_ranking";
+    const rankingRequests: { method: string; body: string | null; url: string }[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/rest/v1/")) {
+        rankingRequests.push({ method: request.method(), body: request.postData(), url: request.url() });
+      }
+    });
+    const corsHeaders = {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "apikey, content-type",
+    };
+    await page.route(rankingUrl, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fulfill({ status: 204, headers: corsHeaders });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: corsHeaders,
+        body: JSON.stringify([
+          { display_name: '<img>x</img>\u0001', best_score: 1234, is_active: false },
+          { display_name: "壊れた点数", best_score: "not-a-number" },
+        ]),
+      });
+    });
+
+    await boot(page);
+    await startGame(page);
+    await page.locator("[data-action=finish]").click();
+    await expect(page.locator("[data-dialog=result]")).toBeVisible();
+
+    await page.locator(".ranking-details summary").click();
+    const rankingList = page.locator("[data-ranking-list]");
+    await expect(rankingList.locator("li")).toHaveCount(1);
+    await expect(rankingList.locator("li").first()).toHaveText('<img>x</img>：1,234点');
+    await expect(rankingList.locator("img")).toHaveCount(0);
+    await expect(page.locator("[data-ranking-status]")).toContainText("旧3球ルール");
+
+    const postRequests = rankingRequests.filter((request) => request.url.includes("get_best_score_ranking"));
+    expect(postRequests).toHaveLength(1);
+    expect(postRequests[0]?.method).toBe("POST");
+    expect(JSON.parse(postRequests[0]?.body ?? "{}")).toEqual({ p_game_slug: "doppan", p_limit: 10 });
+    expect(rankingRequests.every((request) => request.url.includes("get_best_score_ranking"))).toBe(true);
+  });
+
+  test("shows a meaningful recovery surface when WebGL is disabled", async ({ page }) => {
+    await page.goto("/?webgl=off");
+    await expect(page.locator("[data-error]")).toBeVisible();
+    await expect(page.locator("[data-error-text]")).toHaveText("盤面を表示できませんでした。読み込み直してください。");
+    await expect(page.locator("[data-canvas-host] canvas")).toHaveCount(0);
+    await expect(root(page)).toHaveAttribute("data-error", "true");
+    await expect(root(page)).not.toHaveAttribute("data-ready", "true");
+    await expect(page.locator("[data-action=reload]")).toBeEnabled();
+    await expect(page.locator(fireSelector)).toBeDisabled();
+    await expect(page.locator("[data-action=start]")).toBeDisabled();
   });
 });
