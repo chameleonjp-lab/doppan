@@ -324,6 +324,165 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
   });
 
+  test("keeps each seeded miss reveal readable through incidental events and pause", async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 402, height: 874 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=3");
+    await startGame(page);
+
+    // Seed 3 at the calibrated 80% preset produces five actual misses before
+    // the guaranteed ticket. Keep a real pointer hold active for the whole
+    // sequence so every entry, spin, and incidental pocket event is natural.
+    const power = page.locator("#power");
+    await power.fill("1");
+    await expect(power).toHaveAttribute("aria-valuetext", "80");
+    await beginPointerFire(page);
+
+    const missReveal = async (charge: number): Promise<void> => {
+      await advanceUntil(
+        page,
+        async () => {
+          const visible = await readRootDiagnostics(page);
+          return visible.spinStage === "reveal" && await page.locator("[data-spin-title]").textContent() === "はずれ";
+        },
+        30_000,
+        `seed-3 miss reveal ${charge}`,
+      );
+
+      const visible = await readRootDiagnostics(page);
+      expect(visible).toMatchObject({
+        spinStage: "reveal",
+        focusTarget: "none",
+        presentationStage: "reveal",
+      });
+      await expect(page.locator("[data-spin-title]")).toHaveText("はずれ");
+      await expect(page.locator("[data-reel]")).toHaveCount(3);
+      for (const reel of await page.locator("[data-reel]").all()) {
+        await expect(reel).toHaveAttribute("data-spinning", "false");
+      }
+      await expect(page.locator("[data-charge]")).toHaveAttribute("value", String(charge));
+      if (charge === 5) {
+        // The compact HUD label may say only "次は大当たり"; the progress
+        // element and event line above still expose the exact 5 / 5 state.
+        await expect(page.locator("[data-charge-label]")).toContainText("次は大当たり");
+        await expect(page.locator("[data-spin-detail]")).toHaveText("次は大当たり");
+      } else {
+        await expect(page.locator("[data-charge-label]")).toHaveText(`チャージ ${charge} / 5`);
+        await expect(page.locator("[data-spin-detail]")).toHaveText(`チャージ ${charge} / 5`);
+      }
+      const expectedEvent = charge === 5
+        ? "はずれ。チャージ 5 / 5 · 次は大当たり。"
+        : `はずれ。チャージ ${charge} / 5。`;
+      await expect(page.locator("[data-event]")).toHaveText(expectedEvent);
+    };
+
+    await missReveal(1);
+    await screenshot(page, testInfo, "402x874-miss");
+    await page.setViewportSize({ width: 320, height: 568 });
+    await expectMouthLayoutInViewport(page);
+    await screenshot(page, testInfo, "320x568-miss");
+    await page.setViewportSize({ width: 402, height: 874 });
+
+    // The held pointer keeps firing while the first reveal is displayed. The
+    // 200 ms step includes continued real firing and incidental activity;
+    // the miss announcement and reveal focus must survive that activity.
+    const firstEvent = await page.locator("[data-event]").textContent();
+    const firstBefore = await readRootDiagnostics(page);
+    await runClock(page, clockStepMs);
+    const firstAfter = await readRootDiagnostics(page);
+    expect(Number(firstAfter.fired ?? "0")).toBeGreaterThan(Number(firstBefore.fired ?? "0"));
+    await expect(page.locator("[data-event]")).toHaveText(firstEvent ?? "");
+    expect(firstAfter).toMatchObject({
+      spinStage: "reveal",
+      focusTarget: "none",
+      presentationStage: "reveal",
+    });
+
+    for (const charge of [2, 3, 4] as const) {
+      await advanceUntil(
+        page,
+        async () => (await readRootDiagnostics(page)).spinStage !== "reveal",
+        2_000,
+        `seed-3 next stage after charge ${charge - 1}`,
+      );
+      await missReveal(charge);
+    }
+
+    await advanceUntil(
+      page,
+      async () => (await readRootDiagnostics(page)).spinStage !== "reveal",
+      2_000,
+      "seed-3 next stage after charge 4",
+    );
+    await missReveal(5);
+    await page.setViewportSize({ width: 320, height: 568 });
+    await expectMouthLayoutInViewport(page);
+    const fifthLcdLayout = await page.locator("[data-reel-display]").evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const detail = element.querySelector<HTMLElement>("[data-spin-detail]");
+      const detailBounds = detail?.getBoundingClientRect();
+      return {
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        detailClientWidth: detail?.clientWidth ?? 0,
+        detailScrollWidth: detail?.scrollWidth ?? 0,
+        bounds: { left: bounds.left, right: bounds.right },
+        detailBounds: detailBounds === undefined ? null : { left: detailBounds.left, right: detailBounds.right },
+      };
+    });
+    expect(fifthLcdLayout.scrollWidth).toBeLessThanOrEqual(fifthLcdLayout.clientWidth);
+    expect(fifthLcdLayout.detailScrollWidth).toBeLessThanOrEqual(fifthLcdLayout.detailClientWidth);
+    expect(fifthLcdLayout.detailBounds?.left ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual(fifthLcdLayout.bounds.left);
+    expect(fifthLcdLayout.detailBounds?.right ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(fifthLcdLayout.bounds.right);
+    await screenshot(page, testInfo, "320x568-fifth-charge");
+    await page.setViewportSize({ width: 402, height: 874 });
+
+    // Release the captured FIRE pointer before clicking PAUSE. A captured
+    // pointer can retarget the pause click to the firing control.
+    await page.mouse.up();
+    await flushInputFrame(page);
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+    const pausedText = await page.locator("[data-event]").textContent();
+    const pausedBefore = await readRootDiagnostics(page);
+    const pausedReels = await page.locator("[data-reel]").evaluateAll((reels) => reels.map((reel) => ({
+      text: reel.textContent,
+      spinning: reel.getAttribute("data-spinning"),
+    })));
+    await page.locator("[data-action=pause]").click();
+    await expect(root(page)).toHaveAttribute("data-paused", "true");
+    await runClock(page, 1_000);
+    expect(await readRootDiagnostics(page)).toMatchObject({
+      paused: "true",
+      spinStage: "reveal",
+      focusTarget: "none",
+      presentationStage: "reveal",
+      fired: pausedBefore.fired,
+    });
+    await expect(page.locator("[data-event]")).toHaveText(pausedText ?? "");
+    expect(await page.locator("[data-reel]").evaluateAll((reels) => reels.map((reel) => ({
+      text: reel.textContent,
+      spinning: reel.getAttribute("data-spinning"),
+    })))).toEqual(pausedReels);
+
+    await page.locator("[data-action=resume]").click();
+    await expect(root(page)).toHaveAttribute("data-paused", "false");
+    await advanceUntil(
+      page,
+      async () => (await readRootDiagnostics(page)).spinStage !== "reveal",
+      2_000,
+      "seed-3 stage release after resume",
+    );
+    const released = await readRootDiagnostics(page);
+    expect(released).toMatchObject({
+      spinStage: "spinning",
+      focusTarget: "start",
+      presentationStage: "spinning",
+    });
+    await expect(page.locator("[data-event]")).not.toContainText("はずれ");
+  });
+
   test("routes Space keydown/up and releases a real pointer on cancel and lost capture", async ({ page }) => {
     await installDeterministicClock(page);
     await boot(page, "/?debug=1&seed=77");
