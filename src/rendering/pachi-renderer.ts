@@ -11,9 +11,9 @@ import type {
   PachiPoint,
   PachiRect,
   PachiSessionSnapshot,
-  PachiSpinSnapshot,
   PachiWorldSnapshot,
 } from "../game/pachi-types";
+import { getPachiVisualState } from "../presentation/pachi-feedback";
 import {
   PACHI_BOARD_HEIGHT,
   PACHI_BOARD_WIDTH,
@@ -128,12 +128,13 @@ const COLOR = {
   start: 0x57e19d,
   side: 0x9a4b69,
   attacker: 0xf08b3e,
+  reach: 0xeeb777,
+  revival: 0xd3aff2,
   drain: 0x321021,
   white: 0xffffff,
 } as const;
 
 const DEFAULT_BALL_RADIUS = 6;
-const MAX_PARTICLES = 18;
 
 function viewportSize(host: HTMLElement): { width: number; height: number } {
   const bounds = host.getBoundingClientRect();
@@ -184,37 +185,11 @@ function getScreenRect(geometry: PachiBoardGeometry): PachiRect {
   return screen === undefined ? PACHI_SCREEN_RECT : screen;
 }
 
-function getSpin(snapshot: PachiSnapshot): PachiSpinSnapshot {
-  if ("spin" in snapshot && snapshot.spin) {
-    return snapshot.spin;
-  }
-  return {
-    stage: "idle",
-    elapsed: 0,
-    finalDigits: null,
-    stopped: [false, false, false],
-    reveal: "none",
-    title: "",
-    ticket: null,
-    reach: false,
-    win: false,
-    pushState: "hidden",
-  };
-}
-
 function isAttackerOpen(snapshot: PachiSnapshot): boolean {
   if ("attackerOpen" in snapshot) {
     return snapshot.attackerOpen;
   }
   return snapshot.jackpotRemaining > 0;
-}
-
-function isJackpotOpen(snapshot: PachiSnapshot): boolean {
-  return "jackpotRemaining" in snapshot && snapshot.jackpotRemaining > 0;
-}
-
-function isRushActive(snapshot: PachiSnapshot): boolean {
-  return "rushRemaining" in snapshot && snapshot.rushRemaining > 0;
 }
 
 function isSnapshotPaused(snapshot: PachiSnapshot): boolean {
@@ -328,9 +303,8 @@ export async function createPachiRenderer(
   const staticBoard = new Graphics();
   const staticGeometry = new Graphics();
   const dynamicDecor = new Graphics();
-  const particles = new Graphics();
   const ballLayer = new Container();
-  board.addChild(staticBoard, staticGeometry, particles, dynamicDecor, ballLayer);
+  board.addChild(staticBoard, staticGeometry, dynamicDecor, ballLayer);
   stage.addChild(board);
 
   const ballVisuals = new Map<string, BallVisual>();
@@ -475,10 +449,12 @@ export async function createPachiRenderer(
       staticGeometry.circle(nail.x - radius * 0.28, nail.y - radius * 0.3, Math.max(1.2, radius * 0.25)).fill({ color: COLOR.white, alpha: 0.8 });
     }
 
-    drawPocketWell(staticGeometry, geometry.start, COLOR.start);
+    // Availability belongs to the live target outline, not the fixed sensor.
+    // Neutral wells keep full START and the closed attacker from promising a reward.
+    drawPocketWell(staticGeometry, geometry.start, COLOR.silverDark);
     drawPocketWell(staticGeometry, geometry.sideLeft, COLOR.side);
     drawPocketWell(staticGeometry, geometry.sideRight, COLOR.side);
-    drawPocketWell(staticGeometry, geometry.attacker, COLOR.attacker);
+    drawPocketWell(staticGeometry, geometry.attacker, COLOR.silverDark);
 
     const drain = geometry.drain;
     staticGeometry
@@ -523,59 +499,112 @@ export async function createPachiRenderer(
     }
   };
 
-  const drawEffects = (snapshot: PachiSnapshot, screen: PachiRect, reducedMotion: boolean, t: number): void => {
-    dynamicDecor.clear();
-    particles.clear();
-    const geometry = snapshot.geometry;
-    const spin = getSpin(snapshot);
-    const open = isAttackerOpen(snapshot);
-    // Only visible spin stages may signal a climax.  The rule layer can know a
-    // win from the start of a ticket; exposing that flag here would leak the
-    // result during ordinary spinning.
-    const climax =
-      spin.stage === "reach" || spin.stage === "revival" || spin.stage === "jackpot";
-    const jackpot = isJackpotOpen(snapshot);
-    const rush = isRushActive(snapshot);
-
-    const pulse = reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(t * 2.4);
-    const start = geometry.start;
-    dynamicDecor
-      .roundRect(start.x - 13, start.y - 13, start.width + 26, start.height + 26, Math.min(18, start.height))
-      .fill({ color: COLOR.start, alpha: 0.08 + pulse * (climax ? 0.1 : 0.05) })
-      .stroke({ color: climax ? COLOR.goldBright : COLOR.start, width: climax ? 2.8 : 2, alpha: 0.38 + pulse * 0.3 });
-
-    const screenAlpha = climax ? 0.72 + pulse * 0.18 : jackpot ? 0.62 : rush ? 0.42 : 0.34;
-    dynamicDecor
-      .roundRect(screen.x - 4, screen.y - 4, screen.width + 8, screen.height + 8, 20)
-      .stroke({ color: climax || jackpot ? COLOR.goldBright : rush ? 0xb28db8 : COLOR.wine, width: climax ? 3 : rush ? 1.4 : 2, alpha: screenAlpha });
-
-    // RUSH is a restrained state indicator.  It must not make a closed
-    // attacker look open; the jackpot glow and particles below are reserved
-    // for the actual six-second opening window.
-    if (rush && !jackpot) {
+  const drawTarget = (rect: PachiRect, attacker: boolean, pulse: number): void => {
+    const color = attacker ? COLOR.goldBright : COLOR.start;
+    const center = centerOf(rect);
+    if (!attacker) {
       dynamicDecor
-        .moveTo(screen.x + screen.width * 0.2, screen.y + screen.height + 9)
-        .lineTo(screen.x + screen.width * 0.8, screen.y + screen.height + 9)
-        .stroke({ color: 0xb28db8, width: 1.2, alpha: 0.34 });
+        .roundRect(rect.x - 13, rect.y - 13, rect.width + 26, rect.height + 17, 18)
+        .stroke({ color, width: 2.6, alpha: 0.64 + pulse * 0.16 });
     }
 
-    if (jackpot) {
-      const attacker = centerOf(geometry.attacker);
-      dynamicDecor
-        .ellipse(attacker.x, attacker.y, geometry.attacker.width * 0.72, geometry.attacker.height * 1.55)
-        .fill({ color: COLOR.gold, alpha: reducedMotion ? 0.1 : 0.08 + pulse * 0.09 })
-        .stroke({ color: COLOR.goldBright, width: 2, alpha: reducedMotion ? 0.52 : 0.38 + pulse * 0.3 });
-      if (!reducedMotion) {
-        for (let i = 0; i < MAX_PARTICLES; i += 1) {
-          const phase = t * (0.7 + (i % 4) * 0.12) + i * 1.91;
-          const x = attacker.x + Math.sin(phase * 1.31) * (geometry.attacker.width * 0.82);
-          const y = attacker.y - 18 - ((phase * 37 + i * 13) % 105);
-          const alpha = 0.22 + 0.24 * (0.5 + 0.5 * Math.sin(phase * 1.8));
-          particles.circle(x, y, 1.6 + (i % 3) * 0.7).fill({ color: COLOR.goldBright, alpha });
+    // Open brackets and inward chevrons point at the real sensor from outside.
+    // No fill, particle field or line through its center can obscure an entering ball.
+    for (const direction of [-1, 1]) {
+      const edge = center.x + direction * (rect.width / 2 + 16);
+      if (attacker) {
+        dynamicDecor
+          .moveTo(edge - direction * 24, rect.y - 13)
+          .lineTo(edge, rect.y - 13)
+          .lineTo(edge, rect.y + rect.height + 13)
+          .lineTo(edge - direction * 24, rect.y + rect.height + 13)
+          .stroke({ color, width: 4.5, alpha: 0.9 });
+        dynamicDecor
+          .moveTo(edge - direction * 24, rect.y - 19)
+          .lineTo(edge + direction * 6, rect.y - 19)
+          .stroke({ color: COLOR.attacker, width: 2, alpha: 0.65 + pulse * 0.2 });
+      }
+      const count = attacker ? 2 : 1;
+      for (let i = 0; i < count; i += 1) {
+        const x = edge + direction * (12 + i * 16);
+        const halfHeight = attacker ? 10 : 7;
+        dynamicDecor
+          .moveTo(x + direction * 7, center.y - halfHeight)
+          .lineTo(x, center.y)
+          .lineTo(x + direction * 7, center.y + halfHeight)
+          .stroke({ color, width: attacker ? 4 : 2.6, alpha: 0.72 + pulse * 0.18 });
+      }
+    }
+  };
+
+  const drawScreenState = (
+    screen: PachiRect,
+    stage: ReturnType<typeof getPachiVisualState>["stage"],
+    pulse: number,
+  ): void => {
+    const jackpot = stage === "jackpot";
+    const reach = stage === "reach";
+    const revival = stage === "revival";
+    const judge = stage === "judge";
+    const color = jackpot ? COLOR.goldBright : revival || judge ? COLOR.revival : reach ? COLOR.reach : COLOR.silverDark;
+    dynamicDecor
+      .roundRect(screen.x - 4, screen.y - 4, screen.width + 8, screen.height + 8, 20)
+      .stroke({ color, width: jackpot || revival ? 2.4 : 1.6, alpha: jackpot ? 0.62 : reach || revival ? 0.6 + pulse * 0.12 : 0.38 });
+
+    // These marks stay outside the HTML well. Their fixed shapes survive motion
+    // reduction: paired stops for reach, four corners for revival/confirmation,
+    // and paired upright wait marks throughout the complete judgment window.
+    for (const direction of [-1, 1]) {
+      const x = screen.x + (direction > 0 ? screen.width : 0) + direction * 6;
+      if (judge || reach) {
+        const y = screen.y + screen.height / 2;
+        dynamicDecor
+          .moveTo(x, y - 18)
+          .lineTo(x, y + 18)
+          .stroke({ color, width: reach ? 3 : 2, alpha: reach ? 0.8 : 0.58 });
+        if (judge) {
+          dynamicDecor
+            .moveTo(x + direction * 4, y - 18)
+            .lineTo(x + direction * 4, y + 18)
+            .stroke({ color, width: 2, alpha: 0.58 });
+        }
+      }
+      if (revival || jackpot) {
+        for (const vertical of [-1, 1]) {
+          const y = screen.y + (vertical > 0 ? screen.height : 0) + vertical * 6;
+          dynamicDecor
+            .moveTo(x, y - vertical * 28)
+            .lineTo(x, y - vertical * 12)
+            .lineTo(x - direction * 12, y)
+            .lineTo(x - direction * 28, y)
+            .stroke({ color, width: jackpot ? 3.4 : 2.8, alpha: jackpot ? 0.8 : 0.76 });
+          if (jackpot) {
+            dynamicDecor
+              .moveTo(x - direction * 36, y)
+              .lineTo(x - direction * 46, y)
+              .stroke({ color, width: 3.4, alpha: 0.7 });
+          }
         }
       }
     }
+  };
 
+  const drawEffects = (snapshot: PachiSnapshot, screen: PachiRect, reducedMotion: boolean, t: number): void => {
+    dynamicDecor.clear();
+    const geometry = snapshot.geometry;
+    const open = isAttackerOpen(snapshot);
+    // Raw physics previews retain their open/closed rendering contract. Session
+    // presentation uses the same public-state helper as the HUD, never hidden outcomes.
+    const visual: ReturnType<typeof getPachiVisualState> = "spin" in snapshot
+      ? getPachiVisualState(snapshot)
+      : { target: open ? "attacker" : "start", stage: open ? "jackpot" : "normal" };
+    const pulse = reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(t * 2.4);
+    drawScreenState(screen, visual.stage, pulse);
+    if (visual.target === "start") {
+      drawTarget(geometry.start, false, pulse);
+    } else if (visual.target === "attacker" && open) {
+      drawTarget(geometry.attacker, true, pulse);
+    }
     drawAttackerLid(geometry, open, reducedMotion, t);
   };
 

@@ -4,6 +4,13 @@ import { registerGameLoopHmrDispose } from "./runtime";
 import { PachiSession } from "./game/pachi-session";
 import { clampPachiPowerIndex, PACHI_DEFAULT_POWER_INDEX, pachiPowerForIndex } from "./game/pachi-power";
 import type { PachiSessionEvent, PachiSessionSnapshot } from "./game/pachi-types";
+import {
+  applyPachiFeedbackEvent,
+  createPachiFeedbackState,
+  getPachiVisualState,
+  syncPachiFeedback,
+  type PachiFeedbackState,
+} from "./presentation/pachi-feedback";
 import { createPachiRenderer, PACHI_SCREEN_RECT, type PachiRenderer } from "./rendering/pachi-renderer";
 import { PachiAudio } from "./ui/pachi-audio";
 import { cleanPlayerName, gameUrl, readPreference, savePreference, shareGame, readHistoricalRanking, PACHI_RULE_VERSION } from "./ui/pachi-platform";
@@ -22,6 +29,10 @@ const ui = {
   display: element<HTMLElement>("[data-reel-display]"), mode: element<HTMLElement>("[data-mode]"), title: element<HTMLElement>("[data-spin-title]"), detail: element<HTMLElement>("[data-spin-detail]"),
   reels: [...document.querySelectorAll<HTMLElement>("[data-reel]")], pending: element<HTMLElement>("[data-pending]"), pendingCount: element<HTMLElement>("[data-pending-count]"),
   lights: [...document.querySelectorAll<HTMLElement>(".pending-lights i")], charge: element<HTMLProgressElement>("[data-charge]"), chargeLabel: element<HTMLElement>("[data-charge-label]"),
+  mouths: {
+    start: element<HTMLElement>("[data-mouth-label=start]"),
+    attacker: element<HTMLElement>("[data-mouth-label=attacker]"),
+  },
   banner: element<HTMLElement>("[data-win-banner]"), winNote: element<HTMLElement>("[data-win-note]"), loading: element<HTMLElement>("[data-loading]"),
   error: element<HTMLElement>("[data-error]"), errorText: element<HTMLElement>("[data-error-text]"), host: element<HTMLElement>("[data-canvas-host]"),
   sound: element<HTMLButtonElement>("[data-action=sound]"), reduced: element<HTMLInputElement>("[data-reduced-motion]"),
@@ -50,6 +61,7 @@ let rankingRequest: AbortController | null = null;
 let rankingLoaded = false;
 let resultText = "";
 let audioGeneration = 0;
+let feedback: PachiFeedbackState = createPachiFeedbackState();
 const machine = element<HTMLElement>("[data-machine]");
 const playArea = element<HTMLElement>(".play-area");
 const fitMachine = (): void => {
@@ -147,7 +159,9 @@ function finishGame(): void {
   audio.setSuspended(false);
   session.finish();
   loop.discardElapsedTime();
-  updateUi(session.snapshot());
+  const snapshot = session.snapshot();
+  for (const event of session.drainEvents()) handleEvent(event, snapshot);
+  updateUi(snapshot);
 }
 function startGame(): void {
   if (!renderer || fatal || activeGame()) return;
@@ -162,14 +176,18 @@ function startGame(): void {
   element<HTMLElement>("[data-result-end-note]").textContent = "";
   displayedTicket = null;
   lastDigits = [7, 7, 7];
+  feedback = createPachiFeedbackState();
+  setText(ui.event, "強さを調整して、中央の入賞口を狙おう。");
   session.destroy();
   session = newSession();
   setPowerIndex(Number(ui.power.value));
   session.start();
+  const snapshot = session.snapshot();
+  for (const event of session.drainEvents()) handleEvent(event, snapshot);
   closeDialogs();
   audio.setSuspended(false);
   loop.discardElapsedTime();
-  updateUi(session.snapshot());
+  updateUi(snapshot);
   ui.fire.focus({ preventScroll: true });
 }
 function showHelp(): void {
@@ -199,13 +217,13 @@ function renderReels(snapshot: PachiSessionSnapshot): void {
   }
   const judging = snapshot.rushStage === "judge";
   const opening = snapshot.jackpotRemaining > 0;
-  const judgment = snapshot.rushResult === "continue" ? "RUSH 継続！" : snapshot.rushResult === "end" ? "RUSH 終了" : `継続判定 ${snapshot.rushRound} / 3`;
+  const judgment = `継続判定 ${snapshot.rushRound} / 3`;
   ui.display.dataset.rushStage = snapshot.rushStage;
   setText(ui.mode, snapshot.rushStage !== "idle" ? `RUSH ${snapshot.rushRound} / 3` : "DOPPAN CHANCE");
   setText(ui.title, judging ? judgment : opening ? `RUSH ${snapshot.rushRound} / 3` : spin.stage === "preview" ?
     (spin.cue === "guaranteed" ? "大当たり保証！" : "保留がたまった！") : spin.title ||
     (snapshot.phase === "settling" ? "最後の玉を見届けよう" : snapshot.charge >= 5 ? "次の抽選で、大当たり" : "中央の入賞口を狙おう"));
-  const detail = judging ? "継続率 1/2 · 最大3区間" : opening ? `得点口 あと${snapshot.jackpotRemaining.toFixed(1)}秒` :
+  const detail = judging ? "結果を待とう。" : opening ? `得点口 あと${snapshot.jackpotRemaining.toFixed(1)}秒` :
     spin.stage === "revival" ? (spin.stopped[1] ? "まだ、終わらない" : "再始動！ ここから巻き返す") : spin.stage === "preview" && spin.cue === "guaranteed" ? "この保留で大当たり" :
     spin.stage === "reach" ? "あと、ひとつ。" : spin.reveal === "miss" ? "チャージがたまる" :
     snapshot.pending >= 4 ? "保留満タン · 発射を休めます" : "3つそろえば大当たり";
@@ -225,41 +243,41 @@ function renderReels(snapshot: PachiSessionSnapshot): void {
   setText(ui.winNote, "得点口が開いた！");
 }
 
-function handleEvent(event: PachiSessionEvent): void {
+function handleEvent(event: PachiSessionEvent, eventSnapshot = session.snapshot()): void {
   audio.play(event);
   if (event.type === "deadline" && event.reason) {
     element<HTMLElement>("[data-result-end-note]").textContent = event.reason === "balls-exhausted" ?
       "持ち玉と保留を使い切ったため、終了しました。" : "90秒の発射と、残った保留を精算した結果です。";
   }
-  const messages: Partial<Record<PachiSessionEvent["type"], string>> = {
-    started: "強さを調整して、中央の入賞口を狙おう。",
-    "start-entry": "中央入賞 ＋50点・3玉！ 保留がたまる。",
-    "side-entry": "副入賞 ＋20点・2玉。",
-    "spin-start": "図柄が回りはじめた。",
-    "spin-reach": "リーチ！ 真ん中がそろえば大当たり。",
-    "spin-push": "PUSH受付！ 結果を待とう。",
-    "jackpot-start": "大当たり ＋1,500点！ 光る得点口で稼ごう。",
-    "attacker-entry": "得点口に入賞！ ＋100点・5玉。",
-    "jackpot-end": "得点口が閉じた。",
-    "rush-judge": "ラッシュ継続判定。もう一度、得点口が開く…？",
-    "rush-continue": "ラッシュ継続！ 得点口がもう6秒開きます。",
-    "rush-end": "ラッシュ終了。残った保留へ進みます。",
-    deadline: "時間終了。残った玉と保留を受け取ろう。",
-    reclaimed: "止まった玉を回収しました。プレイを続けられます。",
-  };
-  if (event.type === "start-entry" && event.accepted === false) {
-    setText(ui.event, session.snapshot().phase === "playing" ? "保留満タン：中央の得点・払い玉なし" : "時間終了：中央の得点・払い玉なし");
-  }
-  else if (event.type === "jackpot-start" && event.opened === false) setText(ui.event, "保留の大当たり ＋1,500点を受け取りました。");
-  else if (event.type === "jackpot-start" && session.snapshot().phase === "settling") setText(ui.event, "最後のラッシュ！ 発射して得点口を狙えます。");
-  else if (event.type === "deadline" && event.reason === "balls-exhausted") setText(ui.event, "持ち玉終了。今回の結果です。");
-  else if (event.type === "deadline" && session.snapshot().jackpotRemaining > 0) setText(ui.event, "時間終了。最後の得点口を狙えます。");
-  else if (event.type === "spin-reveal" && !event.win) setText(ui.event, "はずれ。5回続くと、次は大当たり。");
-  else if (messages[event.type]) setText(ui.event, messages[event.type] ?? "");
+  feedback = applyPachiFeedbackEvent(feedback, event, eventSnapshot);
+  if (feedback.text) setText(ui.event, feedback.text);
   if (event.type === "deadline") releaseFire();
 }
 
+function updatePocketLabels(snapshot: PachiSessionSnapshot): void {
+  const startState = snapshot.phase === "settling" || snapshot.phase === "result"
+    ? "settling"
+    : snapshot.phase === "playing" && snapshot.pending >= 4
+      ? "full"
+      : "available";
+  const attackerState = snapshot.jackpotRemaining > 0
+    ? "open"
+    : snapshot.phase === "settling"
+      ? "settling"
+      : "closed";
+
+  ui.mouths.start.dataset.pocketState = startState;
+  ui.mouths.attacker.dataset.pocketState = attackerState;
+  setText(ui.mouths.start, startState === "full" ? "START 保留満タン" : startState === "settling" ? "START 精算中" : "START +50点 / +3玉");
+  setText(ui.mouths.attacker, attackerState === "open" ? "OPEN +100点 / +5玉" : attackerState === "settling" ? "得点口 精算中" : "得点口 CLOSED");
+}
+
 function updateUi(snapshot: PachiSessionSnapshot): void {
+  feedback = syncPachiFeedback(feedback, snapshot);
+  if (feedback.text) setText(ui.event, feedback.text);
+  else if (snapshot.phase === "idle") setText(ui.event, "名前を入力して、ゲームを始めよう。");
+  else if (snapshot.phase === "result") setText(ui.event, "今回の結果を確認しよう。");
+  else if (feedback.guard === "none") setText(ui.event, "");
   root.dataset.phase = snapshot.phase;
   root.dataset.paused = String(snapshot.paused);
   root.dataset.fired = String(snapshot.stats.fired);
@@ -269,6 +287,9 @@ function updateUi(snapshot: PachiSessionSnapshot): void {
   root.dataset.spinStage = snapshot.spin.stage;
   root.dataset.rushStage = snapshot.rushStage;
   root.dataset.rushRound = String(snapshot.rushRound);
+  const visualState = getPachiVisualState(snapshot);
+  root.dataset.focusTarget = visualState.target;
+  root.dataset.presentationStage = visualState.stage;
   setText(ui.score, snapshot.score.toLocaleString("ja-JP"));
   ui.score.parentElement?.setAttribute("data-negative", String(snapshot.score < 0));
   setText(ui.time, snapshot.phase === "settling" ? "精算中" : `${Math.ceil(snapshot.timeRemaining)}秒`);
@@ -286,6 +307,7 @@ function updateUi(snapshot: PachiSessionSnapshot): void {
   ui.power.disabled = !playable;
   ui.pause.disabled = !activeGame(snapshot) || fatal;
   ui.finish.disabled = !activeGame(snapshot) || fatal;
+  updatePocketLabels(snapshot);
   renderReels(snapshot);
   if (snapshot.phase === "result" && !resultShown) showResult(snapshot);
 }
@@ -375,7 +397,7 @@ const loop = registerGameLoopHmrDispose((deltaMs) => {
   // Visibility/blur pauses rather than paying a multi-second backlog on return.
   if (deltaMs > 250 && activeGame()) { pauseGame(); return; }
   const snapshot = session.step(Math.min(deltaMs, 250));
-  for (const event of session.drainEvents()) handleEvent(event);
+  for (const event of session.drainEvents()) handleEvent(event, snapshot);
   updateUi(snapshot);
   renderer?.render(snapshot, reducedMotion);
 }, import.meta.hot, { onError: fail, onDispose: dispose });

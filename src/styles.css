@@ -275,11 +275,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
   height:5px;
   accent-color:#ffbe6a
 }
-.reel-display[data-stage=reach]{
-  border-color:#ffe7a8;
-  box-shadow:0 0 15px #eabc7555
+[data-presentation-stage=reach] .reel-display{
+  border-color:#eeb777;
+  box-shadow:inset 0 0 14px #eeb77720
 }
-.reel-display[data-stage=jackpot],.reel-display[data-stage=win]{
+[data-presentation-stage=jackpot] .reel-display{
   border-color:#fff4bd;
   background:radial-gradient(ellipse at center,#865721,#25101a)
 }
@@ -913,13 +913,18 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
   transform:rotate(45deg);
   box-shadow:0 0 6px #f7df8c88
 }
-.reel-display[data-stage=revival],.reel-display[data-rush-stage=judge]{
-  border-color:#e6c5ff;
-  box-shadow:inset 0 0 15px #b274dd44
+[data-presentation-stage=revival] .reel-display{
+  border-color:#d3aff2;
+  box-shadow:inset 0 0 15px #b274dd36
 }
-.reel-display[data-push-accepted=true]{
-  border-color:#8ff0d9;
-  box-shadow:inset 0 0 15px #52c5ab3d,0 0 10px #8ff0d933
+[data-presentation-stage=judge] .reel-display{
+  border-color:#ac95be;
+  background:radial-gradient(ellipse at center,#302335,#190f1b);
+  box-shadow:inset 0 0 12px #06040ba6
+}
+[data-presentation-stage=reach] .reel-display[data-push-accepted=true]{
+  border-bottom-color:#8ff0d9;
+  box-shadow:inset 0 -5px 10px #52c5ab24
 }
 .win-banner{
   left:26%;
@@ -950,11 +955,21 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
 .mouth-label{
   position:absolute;
   transform:translateX(-50%);
-  color:#fbe1b3;
+  max-width:64%;
+  color:#b9b2bd;
   font-size:clamp(8px,2.4cqw,13px);
   font-weight:800;
-  letter-spacing:.08em;
+  letter-spacing:.015em;
   line-height:1.2;
+  white-space:nowrap;
+  text-align:center;
   text-shadow:0 1px 3px #100d16;
   pointer-events:none
+}
+[data-focus-target=start] [data-mouth-label=start]{
+  color:#97f2bd
+}
+[data-focus-target=attacker] [data-mouth-label=attacker]{
+  color:#fff0a0;
+  font-weight:900
 }

@@ -28,6 +28,10 @@ type RootDiagnostics = {
   readonly fired: string | undefined;
   readonly pushState: string | undefined;
   readonly spinStage: string | undefined;
+  readonly rushStage: string | undefined;
+  readonly rushRound: string | undefined;
+  readonly focusTarget: string | undefined;
+  readonly presentationStage: string | undefined;
   readonly startEntries: string | undefined;
   readonly jackpots: string | undefined;
   readonly attackerEntries: string | undefined;
@@ -45,10 +49,39 @@ async function readRootDiagnostics(page: Page): Promise<RootDiagnostics> {
     fired: element.getAttribute("data-fired") ?? undefined,
     pushState: element.getAttribute("data-push-state") ?? undefined,
     spinStage: element.getAttribute("data-spin-stage") ?? undefined,
+    rushStage: element.getAttribute("data-rush-stage") ?? undefined,
+    rushRound: element.getAttribute("data-rush-round") ?? undefined,
+    focusTarget: element.getAttribute("data-focus-target") ?? undefined,
+    presentationStage: element.getAttribute("data-presentation-stage") ?? undefined,
     startEntries: element.getAttribute("data-start-entries") ?? undefined,
     jackpots: element.getAttribute("data-jackpots") ?? undefined,
     attackerEntries: element.getAttribute("data-attacker-entries") ?? undefined,
   }));
+}
+
+async function readMouthLayout(page: Page) {
+  return page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-mouth-label]")].map((label) => {
+    const rect = label.getBoundingClientRect();
+    return {
+      name: label.dataset.mouthLabel ?? "",
+      text: label.textContent?.trim() ?? "",
+      scrollWidth: label.scrollWidth,
+      clientWidth: label.clientWidth,
+      left: rect.left,
+      right: rect.right,
+    };
+  }));
+}
+
+async function expectMouthLayoutInViewport(page: Page): Promise<void> {
+  const layout = await readMouthLayout(page);
+  expect(layout).toHaveLength(2);
+  for (const label of layout) {
+    expect(label.text).not.toBe("");
+    expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth);
+    expect(label.left).toBeGreaterThanOrEqual(0);
+    expect(label.right).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth));
+  }
 }
 
 async function installDeterministicClock(page: Page): Promise<void> {
@@ -201,6 +234,17 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator("[data-action=pause]")).toBeEnabled();
     await expect(page.locator("[data-action=finish]")).toBeEnabled();
     await expect(page.locator("[data-event]")).toContainText("強さを調整");
+
+    // The initial play state points at the ordinary START reward. The mouth
+    // labels are part of the public guidance contract, so keep them in the
+    // browser check alongside the root diagnostics.
+    await expect(root(page)).toHaveAttribute("data-focus-target", "start");
+    await expect(root(page)).toHaveAttribute("data-presentation-stage", "normal");
+    await expect(page.locator("[data-mouth-label=start]")).toHaveText(/^START \+50点 \/ \+3玉$/);
+    await expect(page.locator("[data-mouth-label=start]")).toHaveAttribute("data-pocket-state", "available");
+    await expect(page.locator("[data-mouth-label=attacker]")).toHaveText("得点口 CLOSED");
+    await expect(page.locator("[data-mouth-label=attacker]")).toHaveAttribute("data-pocket-state", "closed");
+    await expectMouthLayoutInViewport(page);
   });
 
   test("uses the three calibrated power presets and native step-1 arrows", async ({ page }) => {
@@ -342,40 +386,138 @@ test.describe("90秒パチンコ体験", () => {
     let sawJudge = false;
     let sawPushReady = false;
     let sawPushAutoFallback = false;
+    let sawReachGuidance = false;
+    let sawAttackerReward = false;
+    let sawFullStartLabel = false;
+    let sawJudgeTransition = false;
+    let judgeSamples = 0;
+    let previousRushStage = "idle";
+    let previousAttackerEntries = 0;
+    let bonusAnnouncement: "jackpot" | "attacker" | "continue" = "jackpot";
     // Observe the real sequence. A naturally losing reach is allowed before
     // the first jackpot; it must not be mistaken for a promised win.
     for (let elapsed = 0; elapsed < 60_000; elapsed += clockStepMs) {
       await runClock(page, clockStepMs);
-      const visible = await root(page).evaluate((element) => ({
-        starts: Number(element.getAttribute("data-start-entries")),
-        jackpots: Number(element.getAttribute("data-jackpots")),
-        attackers: Number(element.getAttribute("data-attacker-entries")),
-        spin: element.getAttribute("data-spin-stage"),
-        rush: element.getAttribute("data-rush-stage"),
-        push: element.getAttribute("data-push-state"),
-      }));
-      sawStart ||= visible.starts > 0;
-      sawReach ||= visible.spin === "reach";
-      sawPushReady ||= visible.spin === "reach" && visible.push === "ready";
-      sawPushAutoFallback ||= sawPushReady && visible.push === "hidden";
-      sawAttacker ||= visible.attackers > 0;
-      if (!sawBonus && visible.jackpots > 0 && visible.rush === "open") {
+      const visible = await readRootDiagnostics(page);
+      const starts = Number(visible.startEntries ?? "0");
+      const jackpots = Number(visible.jackpots ?? "0");
+      const attackers = Number(visible.attackerEntries ?? "0");
+      const pending = Number.parseInt((await page.locator("[data-pending-count]").textContent() ?? "0"), 10);
+      const eventLine = await page.locator("[data-event]").textContent() ?? "";
+      const startLabel = await page.locator("[data-mouth-label=start]").textContent() ?? "";
+      const attackerLabel = await page.locator("[data-mouth-label=attacker]").textContent() ?? "";
+      const startState = await page.locator("[data-mouth-label=start]").getAttribute("data-pocket-state");
+      const attackerState = await page.locator("[data-mouth-label=attacker]").getAttribute("data-pocket-state");
+
+      sawStart ||= starts > 0;
+      sawReach ||= visible.spinStage === "reach";
+      sawPushReady ||= visible.spinStage === "reach" && visible.pushState === "ready";
+      sawPushAutoFallback ||= sawPushReady && visible.pushState === "hidden";
+      sawAttacker ||= attackers > 0;
+
+      if (pending >= 4 && visible.phase === "playing") {
+        expect(startLabel.trim()).toBe("START 保留満タン");
+        expect(startState).toBe("full");
+        sawFullStartLabel = true;
+      } else if (visible.phase === "settling") {
+        expect(startLabel.trim()).toBe("START 精算中");
+        expect(startState).toBe("settling");
+      } else if (visible.focusTarget === "start") {
+        expect(startLabel.trim()).toBe("START +50点 / +3玉");
+        expect(startState).toBe("available");
+      }
+      if (visible.focusTarget === "attacker") {
+        expect(attackerLabel.trim()).toBe("OPEN +100点 / +5玉");
+        expect(attackerState).toBe("open");
+      } else if (visible.phase === "settling") {
+        expect(attackerLabel.trim()).toBe("得点口 精算中");
+        expect(attackerState).toBe("settling");
+      } else if (visible.rushStage !== "open") {
+        expect(attackerLabel.trim()).toBe("得点口 CLOSED");
+        expect(attackerState).toBe("closed");
+      }
+
+      if (visible.spinStage === "reach") {
+        expect(visible.presentationStage).toBe("reach");
+        expect(eventLine).toMatch(/リーチ|PUSH/);
+        sawReachGuidance = true;
+      }
+
+      // Apply a judge transition before evaluating the new open interval. A
+      // continuation and an attacker payout can be emitted in the same fixed
+      // frame; the open branch below then accepts whichever is latest.
+      if (previousRushStage === "judge" && visible.rushStage !== "judge") {
+        sawJudgeTransition = true;
+        if (visible.rushStage === "open") {
+          bonusAnnouncement = "continue";
+        } else {
+          expect(visible.rushStage).toBe("idle");
+          expect(eventLine).toMatch(/(?:RUSH|ラッシュ)終了/);
+        }
+      }
+
+      if (!sawBonus && jackpots > 0 && visible.rushStage === "open") {
         sawBonus = true;
+        expect(visible.focusTarget).toBe("attacker");
+        expect(visible.presentationStage).toBe("jackpot");
+        expect(attackerLabel.trim()).toBe("OPEN +100点 / +5玉");
+        expect(eventLine).toMatch(/大当たり|得点口/);
         await expect(page.locator("[data-mode]")).toHaveText(/RUSH [1-3] \/ 3/);
         await expect(page.locator("[data-spin-detail]")).toContainText("得点口");
         await screenshot(page, testInfo, "bonus");
+        await page.setViewportSize({ width: 320, height: 568 });
+        await expectMouthLayoutInViewport(page);
+        await screenshot(page, testInfo, "320x568-bonus");
+        await page.setViewportSize({ width: 402, height: 874 });
       }
-      if (!sawJudge && visible.rush === "judge") {
+      if (visible.rushStage === "open") {
+        if (attackers > previousAttackerEntries) {
+          // A continuation and attacker payout may share one fixed frame;
+          // either is the newest permitted BONUS announcement for that frame.
+          expect(eventLine).toMatch(/得点口.*(?:100|＋100).*(?:5玉|5)|(?:RUSH|ラッシュ)継続/);
+          sawAttackerReward = true;
+          bonusAnnouncement = /得点口.*(?:100|＋100).*(?:5玉|5)/.test(eventLine) ? "attacker" : "continue";
+        } else if (bonusAnnouncement === "attacker") {
+          // START, side, drain, and reclaim notifications must not hide the
+          // actionable attacker payout while BONUS remains open.
+          expect(eventLine).toMatch(/得点口.*(?:100|＋100).*(?:5玉|5)/);
+        } else if (bonusAnnouncement === "continue") {
+          expect(eventLine).toMatch(/(?:RUSH|ラッシュ)継続/);
+        } else {
+          expect(eventLine).toMatch(/大当たり|得点口/);
+        }
+      }
+
+      if (!sawJudge && visible.rushStage === "judge") {
         sawJudge = true;
-        await expect(page.locator("[data-spin-title]")).toHaveText(/^(?:RUSH 継続！|RUSH 終了|継続判定 [1-3] \/ 3)$/);
+        await expect(page.locator("[data-spin-title]")).toHaveText(/^継続判定 [1-3] \/ 3$/);
+        expect(visible.presentationStage).toBe("judge");
+        expect(attackerLabel.trim()).toBe("得点口 CLOSED");
+        expect(eventLine).toMatch(/継続判定/);
         await screenshot(page, testInfo, "judge");
+        await page.setViewportSize({ width: 320, height: 568 });
+        await expectMouthLayoutInViewport(page);
+        await screenshot(page, testInfo, "320x568-judge");
+        await page.setViewportSize({ width: 402, height: 874 });
       }
-      if (sawStart && sawReach && sawBonus && sawAttacker && sawJudge && sawPushAutoFallback) break;
+      if (visible.rushStage === "judge") {
+        // The fixed one-second decision must remain neutral until the actual
+        // continuation/end event. Sampling every 200 ms catches premature
+        // exposure of the pre-decided rushResult in the DOM.
+        await expect(page.locator("[data-spin-title]")).toHaveText(/^継続判定 [1-3] \/ 3$/);
+        expect(eventLine).toMatch(/継続判定/);
+        judgeSamples += 1;
+      }
+      previousRushStage = visible.rushStage ?? "idle";
+      previousAttackerEntries = attackers;
+      if (sawStart && sawReach && sawBonus && sawAttacker && sawJudge && sawPushAutoFallback && sawJudgeTransition) break;
     }
-    expect({ sawStart, sawReach, sawBonus, sawAttacker, sawJudge, sawPushReady, sawPushAutoFallback }).toEqual({
+    expect({ sawStart, sawReach, sawBonus, sawAttacker, sawJudge, sawPushReady, sawPushAutoFallback, sawReachGuidance, sawAttackerReward, sawFullStartLabel, sawJudgeTransition }).toEqual({
       sawStart: true, sawReach: true, sawBonus: true, sawAttacker: true, sawJudge: true,
-      sawPushReady: true, sawPushAutoFallback: true,
+      sawPushReady: true, sawPushAutoFallback: true, sawReachGuidance: true,
+      sawAttackerReward: true, sawFullStartLabel: true, sawJudgeTransition: true,
     });
+    expect(judgeSamples).toBeGreaterThanOrEqual(3);
 
     await page.mouse.up();
     await flushInputFrame(page);
@@ -636,6 +778,7 @@ test.describe("90秒パチンコ体験", () => {
       expect(layout.push).not.toBeNull();
       expect(layout.push?.width ?? 0).toBeGreaterThanOrEqual(44);
       expect(layout.push?.height ?? 0).toBeGreaterThanOrEqual(44);
+      await expectMouthLayoutInViewport(page);
       for (const button of layout.visibleButtons) {
         expect(button.width).toBeGreaterThanOrEqual(44);
         expect(button.height).toBeGreaterThanOrEqual(44);
@@ -665,6 +808,16 @@ test.describe("90秒パチンコ体験", () => {
     });
     await boot(page);
     await startGame(page);
+
+    // Reduced motion keeps the same semantic focus and reward labels; only
+    // the decorative animation is reduced.
+    await expect(root(page)).toHaveAttribute("data-focus-target", "start");
+    await expect(root(page)).toHaveAttribute("data-presentation-stage", "normal");
+    await expect(page.locator("[data-mouth-label=start]")).toHaveText(/^START \+50点 \/ \+3玉$/);
+    await expect(page.locator("[data-mouth-label=start]")).toHaveAttribute("data-pocket-state", "available");
+    await expect(page.locator("[data-mouth-label=attacker]")).toHaveText("得点口 CLOSED");
+    await expect(page.locator("[data-mouth-label=attacker]")).toHaveAttribute("data-pocket-state", "closed");
+    await expectMouthLayoutInViewport(page);
 
     const sound = page.locator("[data-action=sound]");
     await expect(sound).toHaveAttribute("aria-pressed", "false");
