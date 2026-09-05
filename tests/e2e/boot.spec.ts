@@ -340,6 +340,41 @@ test.describe("90秒パチンコ体験", () => {
     await expect(power).toHaveAttribute("aria-valuetext", "80");
     await beginPointerFire(page);
 
+    const resizeForMissEvidence = async (): Promise<void> => {
+      await page.setViewportSize({ width: 320, height: 568 });
+      // Let ResizeObserver and the renderer consume the resize while the
+      // reveal still has more than 500 ms remaining. Keep this bounded.
+      await page.clock.fastForward(20);
+      const layout = await page.locator(".play-area").evaluate((playArea) => {
+        const playBounds = playArea.getBoundingClientRect();
+        const machine = playArea.querySelector<HTMLElement>("[data-machine]");
+        if (machine === null) throw new Error("machine is missing from play area");
+        const machineBounds = machine.getBoundingClientRect();
+        return {
+          play: { left: playBounds.left, right: playBounds.right, top: playBounds.top, bottom: playBounds.bottom },
+          machine: {
+            left: machineBounds.left,
+            right: machineBounds.right,
+            top: machineBounds.top,
+            bottom: machineBounds.bottom,
+            width: machineBounds.width,
+            height: machineBounds.height,
+          },
+        };
+      });
+      const tolerance = 1;
+      expect(layout.machine.left).toBeGreaterThanOrEqual(layout.play.left - tolerance);
+      expect(layout.machine.right).toBeLessThanOrEqual(layout.play.right + tolerance);
+      expect(layout.machine.top).toBeGreaterThanOrEqual(layout.play.top - tolerance);
+      expect(layout.machine.bottom).toBeLessThanOrEqual(layout.play.bottom + tolerance);
+      expect(Math.abs(layout.machine.width / layout.machine.height - 4 / 5)).toBeLessThanOrEqual(0.01);
+      expect(await readRootDiagnostics(page)).toMatchObject({
+        spinStage: "reveal",
+        focusTarget: "none",
+        presentationStage: "reveal",
+      });
+    };
+
     const missReveal = async (charge: number): Promise<void> => {
       await advanceUntil(
         page,
@@ -380,10 +415,11 @@ test.describe("90秒パチンコ体験", () => {
 
     await missReveal(1);
     await screenshot(page, testInfo, "402x874-miss");
-    await page.setViewportSize({ width: 320, height: 568 });
+    await resizeForMissEvidence();
     await expectMouthLayoutInViewport(page);
     await screenshot(page, testInfo, "320x568-miss");
     await page.setViewportSize({ width: 402, height: 874 });
+    await page.clock.fastForward(20);
 
     // The held pointer keeps firing while the first reveal is displayed. The
     // 200 ms step includes continued real firing and incidental activity;
@@ -417,7 +453,7 @@ test.describe("90秒パチンコ体験", () => {
       "seed-3 next stage after charge 4",
     );
     await missReveal(5);
-    await page.setViewportSize({ width: 320, height: 568 });
+    await resizeForMissEvidence();
     await expectMouthLayoutInViewport(page);
     const fifthLcdLayout = await page.locator("[data-reel-display]").evaluate((element) => {
       const bounds = element.getBoundingClientRect();
@@ -438,6 +474,7 @@ test.describe("90秒パチンコ体験", () => {
     expect(fifthLcdLayout.detailBounds?.right ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(fifthLcdLayout.bounds.right);
     await screenshot(page, testInfo, "320x568-fifth-charge");
     await page.setViewportSize({ width: 402, height: 874 });
+    await page.clock.fastForward(20);
 
     // Release the captured FIRE pointer before clicking PAUSE. A captured
     // pointer can retarget the pause click to the firing control.
