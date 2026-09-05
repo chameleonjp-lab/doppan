@@ -198,6 +198,7 @@ function getSpin(snapshot: PachiSnapshot): PachiSpinSnapshot {
     ticket: null,
     reach: false,
     win: false,
+    pushState: "hidden",
   };
 }
 

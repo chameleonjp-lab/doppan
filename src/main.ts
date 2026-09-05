@@ -2,6 +2,7 @@ import "./styles.css";
 import { BUILD_INFO } from "./build-info";
 import { registerGameLoopHmrDispose } from "./runtime";
 import { PachiSession } from "./game/pachi-session";
+import { clampPachiPowerIndex, PACHI_DEFAULT_POWER_INDEX, pachiPowerForIndex } from "./game/pachi-power";
 import type { PachiSessionEvent, PachiSessionSnapshot } from "./game/pachi-types";
 import { createPachiRenderer, PACHI_SCREEN_RECT, type PachiRenderer } from "./rendering/pachi-renderer";
 import { PachiAudio } from "./ui/pachi-audio";
@@ -16,7 +17,7 @@ const root = element<HTMLElement>("[data-app-root]");
 const ui = {
   score: element<HTMLElement>("[data-score]"), time: element<HTMLElement>("[data-time]"), stock: element<HTMLElement>("[data-stock]"),
   event: element<HTMLElement>("[data-event]"), power: element<HTMLInputElement>("#power"), powerValue: element<HTMLOutputElement>("[data-power-value]"),
-  fire: element<HTMLButtonElement>("[data-action=fire]"), pause: element<HTMLButtonElement>("[data-action=pause]"), finish: element<HTMLButtonElement>("[data-action=finish]"),
+  fire: element<HTMLButtonElement>("[data-action=fire]"), push: element<HTMLButtonElement>("[data-action=push]"), pause: element<HTMLButtonElement>("[data-action=pause]"), finish: element<HTMLButtonElement>("[data-action=finish]"),
   start: element<HTMLButtonElement>("[data-action=start]"), name: element<HTMLInputElement>("#player-name"), nameStatus: element<HTMLElement>("[data-name-status]"),
   display: element<HTMLElement>("[data-reel-display]"), mode: element<HTMLElement>("[data-mode]"), title: element<HTMLElement>("[data-spin-title]"), detail: element<HTMLElement>("[data-spin-detail]"),
   reels: [...document.querySelectorAll<HTMLElement>("[data-reel]")], pending: element<HTMLElement>("[data-pending]"), pendingCount: element<HTMLElement>("[data-pending-count]"),
@@ -65,6 +66,18 @@ root.dataset.ruleVersion = PACHI_RULE_VERSION;
 ui.name.value = playerName;
 ui.reduced.checked = reducedMotion;
 
+function setPowerIndex(index: number): void {
+  const presetIndex = clampPachiPowerIndex(index);
+  const power = pachiPowerForIndex(presetIndex);
+  const displayValue = String(Math.round(power * 100));
+  ui.power.value = String(presetIndex);
+  ui.powerValue.value = displayValue;
+  ui.power.setAttribute("aria-valuetext", displayValue);
+  session.setPower(power);
+}
+
+setPowerIndex(PACHI_DEFAULT_POWER_INDEX);
+
 function newSession(): PachiSession {
   const values = new Uint32Array(1);
   crypto.getRandomValues(values);
@@ -96,6 +109,16 @@ function releaseFire(): void {
   ui.fire.dataset.firing = "false";
 }
 function syncFire(): void { session.setFiring((pointerId !== null || keyboardFiring) && canFire(session.snapshot())); }
+
+function acknowledgePush(): void {
+  const snapshot = session.snapshot();
+  if (snapshot.spin.pushState !== "ready") return;
+  if (!session.acknowledgePush(snapshot.spin.ticket ?? undefined)) return;
+  // Publish the acknowledgement and its short cue in the same input turn so
+  // keyboard and touch users see no frame of ambiguous state.
+  for (const event of session.drainEvents()) handleEvent(event);
+  updateUi(session.snapshot());
+}
 
 function pauseGame(): void {
   if (!activeGame() || fatal) return;
@@ -141,7 +164,7 @@ function startGame(): void {
   lastDigits = [7, 7, 7];
   session.destroy();
   session = newSession();
-  session.setPower(Number(ui.power.value) / 100);
+  setPowerIndex(Number(ui.power.value));
   session.start();
   closeDialogs();
   audio.setSuspended(false);
@@ -214,6 +237,7 @@ function handleEvent(event: PachiSessionEvent): void {
     "side-entry": "副入賞 ＋20点・2玉。",
     "spin-start": "図柄が回りはじめた。",
     "spin-reach": "リーチ！ 真ん中がそろえば大当たり。",
+    "spin-push": "PUSH受付！ 結果を待とう。",
     "jackpot-start": "大当たり ＋1,500点！ 光る得点口で稼ごう。",
     "attacker-entry": "得点口に入賞！ ＋100点・5玉。",
     "jackpot-end": "得点口が閉じた。",
@@ -252,6 +276,13 @@ function updateUi(snapshot: PachiSessionSnapshot): void {
   const playable = activeGame(snapshot) && !snapshot.paused && !fatal;
   ui.fire.disabled = !canFire(snapshot);
   ui.fire.dataset.firing = String(snapshot.firing && !snapshot.paused && !ui.fire.disabled);
+  const pushState = snapshot.spin.pushState;
+  ui.push.disabled = !activeGame(snapshot) || snapshot.paused || fatal || pushState !== "ready";
+  ui.push.dataset.pushState = pushState;
+  root.dataset.pushState = pushState;
+  ui.push.textContent = pushState === "accepted" ? "受付済" : "PUSH";
+  ui.push.setAttribute("aria-label", pushState === "accepted" ? "PUSH受付済み" : "PUSH演出の合図");
+  ui.display.dataset.pushAccepted = String(pushState === "accepted");
   ui.power.disabled = !playable;
   ui.pause.disabled = !activeGame(snapshot) || fatal;
   ui.finish.disabled = !activeGame(snapshot) || fatal;
@@ -279,7 +310,7 @@ function showResult(snapshot: PachiSessionSnapshot): void {
     term.textContent = label; value.textContent = `${score > 0 ? "+" : ""}${score.toLocaleString("ja-JP")}点`; row.append(term, value); breakdown.append(row);
   }
   const hint = snapshot.stats.fired === 0 ? "発射ボタンを押している間、玉が出ます。次は強さを動かして、飛び方を見てみよう。" :
-    snapshot.stats.startEntries < 3 ? "中央に届きにくい時は、強さを95付近に戻して、5ずつ動かしてみよう。玉の落ちる場所を見ながら調整できます。" :
+    snapshot.stats.startEntries < 3 ? "中央に届きにくい時は、強さを95に戻してみよう。50・80・95の3段階で、玉の落ちる場所を見比べられます。" :
     snapshot.stats.jackpotCount > 0 && snapshot.stats.attackerEntries === 0 ? "大当たり中の得点口も、強さで狙えます。開いている6秒が稼ぎどころです。" :
     `中央に${snapshot.stats.startEntries}回入賞。保留が満タンの間は発射を休むと、玉と減点を抑えられます。`;
   element<HTMLElement>("[data-result-hint]").textContent = hint;
@@ -370,8 +401,9 @@ for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const
   ui.fire.addEventListener(type, (event) => { if (event.pointerId === pointerId) { pointerId = null; syncFire(); } }, { signal });
 }
 ui.fire.addEventListener("contextmenu", (event) => event.preventDefault(), { signal });
+ui.push.addEventListener("click", acknowledgePush, { signal });
 root.addEventListener("dblclick", (event) => { if (!(event.target instanceof HTMLInputElement)) event.preventDefault(); }, { signal });
-ui.power.addEventListener("input", () => { session.setPower(Number(ui.power.value) / 100); ui.powerValue.value = ui.power.value; }, { signal });
+ui.power.addEventListener("input", () => { setPowerIndex(Number(ui.power.value)); }, { signal });
 element<HTMLFormElement>("[data-start-form]").addEventListener("submit", (event) => { event.preventDefault(); startGame(); }, { signal });
 listen("pause", pauseGame); listen("resume", resumeGame); listen("finish", finishGame); listen("finish-paused", finishGame);
 listen("help", showHelp); listen("close-help", closeHelp); listen("reload", () => window.location.reload());
@@ -395,13 +427,21 @@ window.addEventListener("keydown", (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || document.querySelector("dialog[open]")) return;
   if (event.code === "Escape") { event.preventDefault(); pauseGame(); return; }
   if (!activeGame() || session.snapshot().paused || fatal) return;
-  if (event.code === "Space" && canFire(session.snapshot())) { event.preventDefault(); keyboardFiring = true; syncFire(); }
+  if (event.code === "Space") {
+    // Let native controls (including PUSH) handle their own Space activation;
+    // the fire button is the one intentional exception for keyboard firing.
+    const interactive = event.target instanceof Element ? event.target.closest("button,a,summary,select,[contenteditable=true]") : null;
+    if (interactive !== null && interactive !== ui.fire) return;
+    if (canFire(session.snapshot())) { event.preventDefault(); keyboardFiring = true; syncFire(); }
+  }
   if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
-    event.preventDefault(); ui.power.value = String(Math.max(0, Math.min(100, Number(ui.power.value) + (event.code === "ArrowLeft" ? -2 : 2))));
-    session.setPower(Number(ui.power.value) / 100); ui.powerValue.value = ui.power.value;
+    event.preventDefault();
+    setPowerIndex(Number(ui.power.value) + (event.code === "ArrowLeft" ? -1 : 1));
   }
 }, { signal });
-window.addEventListener("keyup", (event) => { if (event.code === "Space") { keyboardFiring = false; syncFire(); } }, { signal });
+window.addEventListener("keyup", (event) => {
+  if (event.code === "Space") { keyboardFiring = false; syncFire(); }
+}, { signal });
 window.addEventListener("blur", pauseGame, { signal });
 document.addEventListener("visibilitychange", () => { if (document.hidden) pauseGame(); loop.discardElapsedTime(); }, { signal });
 window.addEventListener("pagehide", pauseGame, { signal });

@@ -392,8 +392,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
 }
 .fire-row{
   display:grid;
-  grid-template-columns:1fr 60px;
-  gap:8px;
+  grid-template-columns:minmax(0,1fr) 60px 52px;
+  gap:6px;
   margin-top:7px
 }
 .fire-button{
@@ -422,6 +422,28 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
   background:linear-gradient(#cc6c41,#944332);
   box-shadow:inset 0 0 16px #fff0ad33;
   transform:translateY(2px)
+}
+.push-button{
+  min-height:60px;
+  border:1px solid #88705e;
+  border-radius:12px;
+  color:#d9c2ac;
+  background:#2a2229;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.04em
+}
+.push-button[data-push-state=ready]{
+  border-color:#f4d79a;
+  color:#ffeec9;
+  background:#573b3d;
+  box-shadow:inset 0 1px #fff6d044
+}
+.push-button[data-push-state=accepted]:disabled{
+  opacity:1;
+  border-color:#8ff0d9;
+  color:#bfffee;
+  background:#22483f
 }
 .stop-button{
   font-size:12px;
@@ -714,7 +736,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
   .game-hud strong{
     font-size:21px
   }
-  .fire-button,.stop-button{
+  .fire-button,.push-button,.stop-button{
     min-height:54px
   }
   .control-deck{
@@ -735,7 +757,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
   .power-labels{
     display:none
   }
-  .fire-button,.stop-button{
+  .fire-button,.push-button,.stop-button{
     min-height:49px
   }
   .event-line{
@@ -894,6 +916,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
 .reel-display[data-stage=revival],.reel-display[data-rush-stage=judge]{
   border-color:#e6c5ff;
   box-shadow:inset 0 0 15px #b274dd44
+}
+.reel-display[data-push-accepted=true]{
+  border-color:#8ff0d9;
+  box-shadow:inset 0 0 15px #52c5ab3d,0 0 10px #8ff0d933
 }
 .win-banner{
   left:26%;

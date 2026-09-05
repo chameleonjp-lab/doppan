@@ -86,10 +86,11 @@
 <div class="power-control">
 <label for="power">発射の強さ <output data-power-value>95</output>
 </label>
-<input id="power" type="range" min="0" max="100" value="95" disabled />
+<input id="power" type="range" min="0" max="2" step="1" value="2" aria-valuetext="95" disabled />
 <div class="power-labels">
-<span>弱め</span>
-<span>強め</span>
+<span>50</span>
+<span>80</span>
+<span>95</span>
 </div>
 </div>
 <div class="fire-row">
@@ -97,6 +98,7 @@
 <strong>押している間、発射</strong>
 <span>1発 −10点</span>
 </button>
+<button type="button" class="push-button" data-action="push" data-push-state="hidden" aria-label="PUSH演出の合図" disabled>PUSH</button>
 <button type="button" class="stop-button" data-action="finish" disabled>ここで<br />終える</button>
 </div>
 </section>
@@ -124,7 +126,7 @@
 <ol class="help-steps">
 <li>
 <strong>強さを動かして、狙う。</strong>
-<p>つまみで玉の飛び方を変えます。発射ボタンを押している間だけ、玉を打ちます。</p>
+<p>つまみで玉の飛び方を50 / 80 / 95の3段階から選びます。発射ボタンを押している間だけ、玉を打ちます。</p>
 </li>
 <li>
 <strong>中央に入れて、図柄を回す。</strong>
@@ -159,6 +161,7 @@
 </dl>
 <p class="help-note">保留が満タンの時と90秒終了後は、中央入賞の得点・払い玉がありません。満タンなら発射を休めます。大当たり中は、開いた得点口が狙い目です。持ち玉も保留もなくなると、その時点で終了します。</p>
 <p class="help-note">5回続けて外れると、次は必ず大当たり。チャージは画面に表示します。90秒後は残った玉と保留を精算します。最後のラッシュは1系列まで遊べ、後続の大当たりは得点として受け取れます。「ここで終える」なら保留の当たり点を受け取って終了します。</p>
+<p class="help-note">PUSHは演出の合図。押さなくても当落・表示時刻は同じです。</p>
 <p class="help-note">スコアはマイナスにもなります。お金・購入・有料通貨はありません。図柄は抽選で決まり、止める操作は不要です。</p>
 <p class="help-note">キーボード：Spaceで発射、← →で強さを調整、Escで一時停止。</p>
 <label class="setting-toggle">

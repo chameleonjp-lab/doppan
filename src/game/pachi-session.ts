@@ -1,4 +1,5 @@
 import { PachiWorld } from "../physics/pachi-world";
+import { PACHI_DEFAULT_POWER } from "./pachi-power";
 import {
   PACHI_DEFAULT_DURATION_SECONDS,
   PACHI_DEFAULT_GEOMETRY,
@@ -23,6 +24,7 @@ import type {
   PachiStatsSnapshot,
   PachiTicketCue,
   PachiDisplayDigits,
+  PachiPushState,
   PachiRushResult,
   PachiRushStage,
 } from "./pachi-types";
@@ -57,6 +59,7 @@ interface ActiveSpin {
   reachEventSent: boolean;
   revealEventSent: boolean;
   revival: boolean;
+  pushState: PachiPushState;
 }
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
@@ -105,7 +108,7 @@ export class PachiSession {
   private worldValue: PachiWorld;
   private phaseValue: PachiPhase = "idle";
   private pausedValue = false;
-  private powerValue = 0.5;
+  private powerValue: number = PACHI_DEFAULT_POWER;
   private firingValue = false;
   private timeRemainingValue: number;
   private elapsedValue = 0;
@@ -193,7 +196,7 @@ export class PachiSession {
     this.worldValue = this.createWorld();
     this.phaseValue = "idle";
     this.pausedValue = false;
-    this.powerValue = 0.5;
+    this.powerValue = PACHI_DEFAULT_POWER;
     this.firingValue = false;
     this.timeRemainingValue = this.durationSeconds;
     this.elapsedValue = 0;
@@ -251,6 +254,33 @@ export class PachiSession {
     if (this.phaseValue === "playing" || (this.phaseValue === "settling" && this.jackpotRemainingValue > 0)) {
       this.firingValue = true;
     }
+  }
+
+  /**
+   * Acknowledge the currently active reach without changing its outcome.
+   *
+   * PUSH is deliberately accepted only in the short, visible reach window.
+   * The optional ticket id lets a delayed UI event prove that it still refers
+   * to the same ticket; omitting it is safe for direct controls that read the
+   * current snapshot immediately before calling this method.
+   */
+  public acknowledgePush(expectedTicketId?: number): boolean {
+    this.assertAlive();
+    const spin = this.spinValue;
+    if (
+      this.pausedValue ||
+      (this.phaseValue !== "playing" && this.phaseValue !== "settling") ||
+      spin === null ||
+      !spin.ticket.reach ||
+      !spin.reachEventSent ||
+      spin.revealEventSent ||
+      spin.elapsed >= SPIN_REACH_REVEAL ||
+      spin.pushState !== "ready"
+    ) return false;
+    if (expectedTicketId !== undefined && (!Number.isSafeInteger(expectedTicketId) || expectedTicketId !== spin.ticket.id)) return false;
+    spin.pushState = "accepted";
+    this.emit("spin-push");
+    return true;
   }
 
   public setPaused(paused: boolean): void {
@@ -527,6 +557,7 @@ export class PachiSession {
       reachEventSent: false,
       revealEventSent: false,
       revival: false,
+      pushState: "hidden",
     };
     this.emit("spin-start", {
       pending: this.pendingTickets.length,
@@ -563,6 +594,7 @@ export class PachiSession {
       spin.reachEventSent = true;
       spin.stage = "reach";
       spin.title = "リーチ";
+      spin.pushState = "ready";
       this.emit("spin-reach");
     }
     const revealAt = spin.ticket.reach ? SPIN_REACH_REVEAL : SPIN_PLAIN_REVEAL;
@@ -571,6 +603,10 @@ export class PachiSession {
     }
     if (!spin.revealEventSent && spin.elapsed >= revealAt) {
       spin.revealEventSent = true;
+      // A reach that was not acknowledged is no longer actionable once the
+      // fixed reveal boundary is reached. An accepted acknowledgement remains
+      // visible for this ticket until the next spin or terminal result.
+      if (spin.pushState === "ready") spin.pushState = "hidden";
       // Revival is reserved for the explicitly guaranteed ticket.  A
       // naturally winning ticket proceeds directly to its final reveal.
       spin.revival = spin.ticket.win && spin.ticket.cue === "guaranteed";
@@ -779,6 +815,7 @@ export class PachiSession {
           reach: false,
           win: false,
           revival: false,
+          pushState: "hidden",
         };
       }
       return {
@@ -793,6 +830,7 @@ export class PachiSession {
         reach: false,
         win: false,
         revival: false,
+        pushState: "hidden",
       };
     }
     let finalDigits: PachiDisplayDigits = [
@@ -823,6 +861,7 @@ export class PachiSession {
       // for the reveal so the renderer cannot flash jackpot art early.
       win: spin.reveal === "win",
       revival: spin.revival,
+      pushState: spin.pushState,
     };
   }
 
