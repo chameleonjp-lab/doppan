@@ -678,6 +678,10 @@ export class PachiSession {
       if (this.jackpotRemainingValue > 0) return;
       this.worldValue.setAttackerOpen(false);
       if (this.spinValue?.ticket.win) this.spinValue = null;
+      // A terminal BONUS does not carry a held firing intent into the
+      // judgment window or a later queued ticket. The browser layer releases
+      // the corresponding pointer/keyboard capture from the same event.
+      if (this.phaseValue === "settling") this.firingValue = false;
       this.emit("jackpot-end");
       if (this.rushRoundValue < 3) {
         const decision = this.activeJackpotTicket?.rushDecisions[this.rushRoundValue - 1] ?? false;
@@ -730,7 +734,13 @@ export class PachiSession {
     if (this.deadlineReached) return;
     this.deadlineReached = true;
     this.timeRemainingValue = 0;
-    this.firingValue = false;
+    // A held input may continue through the currently open terminal BONUS.
+    // Normal firing is still blocked by canFireNow() after the deadline, and
+    // the input is cleared when this six-second interval closes. Keeping the
+    // intent here avoids making the player retap at exactly T90.
+    if (!(this.rushStageValue === "open" && this.jackpotRemainingValue > 0)) {
+      this.firingValue = false;
+    }
     if (this.rushStageValue !== "idle") this.settlingBonusClaimedValue = true;
     this.phaseValue = "settling";
     this.settleElapsed = 0;
