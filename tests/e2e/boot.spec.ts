@@ -425,6 +425,9 @@ test.describe("90秒パチンコ体験", () => {
       8_000,
       "terminal BONUS interval end",
     );
+    expect((await readRootDiagnostics(page)).rushStage).toBe("judge");
+    await expect(page.locator("[data-mouth-label=attacker]")).toHaveText("得点口 CLOSED");
+    await expect(page.locator("[data-mouth-label=attacker]")).toHaveAttribute("data-pocket-state", "closed");
     await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
     const firedAtIntervalEnd = Number((await readRootDiagnostics(page)).fired ?? "0");
 
