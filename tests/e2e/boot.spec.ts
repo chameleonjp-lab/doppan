@@ -288,6 +288,10 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator("[data-dialog=start]")).toBeVisible();
 
     await startGame(page);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("doppan.player-name"))).toBe("テストプレイヤー");
+    const localKeys = await page.evaluate(() => Object.keys(localStorage));
+    expect(localKeys).toContain("doppan.player-name");
+    expect(localKeys.some((key) => /score|history|stats|game/i.test(key))).toBe(false);
     await expect(page.locator("#power")).toBeEnabled();
     await expect(page.locator("[data-action=pause]")).toBeEnabled();
     await expect(page.locator("[data-action=finish]")).toBeEnabled();
@@ -1246,9 +1250,12 @@ test.describe("90秒パチンコ体験", () => {
     });
 
     await boot(page);
+    expect(rankingRequests).toHaveLength(0);
     await startGame(page);
+    expect(rankingRequests).toHaveLength(0);
     await page.locator("[data-action=finish]").click();
     await expect(page.locator("[data-dialog=result]")).toBeVisible();
+    expect(rankingRequests).toHaveLength(0);
 
     await page.locator(".ranking-details summary").click();
     const rankingList = page.locator("[data-ranking-list]");

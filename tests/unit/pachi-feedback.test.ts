@@ -102,6 +102,40 @@ describe("Pachi visual focus and feedback", () => {
     expect(state.text).toContain("はずれ");
   });
 
+  it("releases a reach/PUSH cue when the ticket or presentation stage advances", () => {
+    const reach = snapshot({ phase: "playing", pending: 1, spin: { stage: "reach", ticket: 7, reach: true } });
+    let state = applyPachiFeedbackEvent(createPachiFeedbackState(), event("spin-reach"), reach);
+    const nextSpin = snapshot({ phase: "playing", pending: 1, spin: { stage: "spinning", ticket: 8, reach: false } });
+
+    state = applyPachiFeedbackEvent(state, event("spin-start"), nextSpin);
+    expect(state).toMatchObject({ text: "図柄が回りはじめた。", guard: "none", ticket: 8, spinStage: "spinning" });
+
+    const nextReach = snapshot({ phase: "playing", pending: 1, spin: { stage: "reach", ticket: 8, reach: true } });
+    state = applyPachiFeedbackEvent(state, event("spin-reach"), nextReach);
+    expect(state).toMatchObject({ text: "リーチ！ 真ん中がそろえば大当たり。", guard: "reach", ticket: 8, spinStage: "reach" });
+
+    const push = applyPachiFeedbackEvent(state, event("spin-push"), nextReach);
+    const pushNextSpin = snapshot({ phase: "playing", pending: 1, spin: { stage: "spinning", ticket: 9, reach: false } });
+    expect(applyPachiFeedbackEvent(push, event("spin-start"), pushNextSpin)).toMatchObject({
+      text: "図柄が回りはじめた。",
+      guard: "none",
+      ticket: 9,
+      spinStage: "spinning",
+    });
+
+    const reveal = snapshot({ phase: "playing", pending: 1, spin: { stage: "reveal", ticket: 8, reveal: "miss" } });
+    state = applyPachiFeedbackEvent(state, event("spin-reveal", { win: false }), reveal);
+    expect(state).toMatchObject({ text: "はずれ。チャージ 0 / 5。", guard: "miss", ticket: 8, spinStage: "reveal" });
+
+    const stalledTransition = snapshot({ phase: "playing", pending: 1, spin: { stage: "spinning", ticket: 9, reach: false } });
+    expect(syncPachiFeedback({ ...state, guard: "reach", text: "古いリーチ" }, stalledTransition)).toMatchObject({
+      text: "",
+      guard: "none",
+      ticket: 9,
+      spinStage: "spinning",
+    });
+  });
+
   it("keeps a revealed miss and its current charge through incidental events", () => {
     const reveal = snapshot({
       phase: "playing",

@@ -92,6 +92,11 @@ const isSamePublicMissReveal = (state: PachiFeedbackState, snapshot: PachiSessio
   state.ticket === snapshot.spin.ticket &&
   state.spinStage === snapshot.spin.stage;
 
+const isSameProtectedReach = (state: PachiFeedbackState, snapshot: PachiSessionSnapshot): boolean =>
+  (state.guard === "reach" || state.guard === "push") &&
+  state.ticket === snapshot.spin.ticket &&
+  state.spinStage === snapshot.spin.stage;
+
 function context(snapshot: PachiSessionSnapshot): Pick<PachiFeedbackState, "phase" | "ticket" | "spinStage"> {
   return {
     phase: snapshot.phase,
@@ -221,6 +226,13 @@ export function applyPachiFeedbackEvent(
     state = { ...EMPTY_FEEDBACK, ...values };
   }
 
+  // Reach/PUSH belongs to one ticket and one presentation stage. Release it
+  // before reducing an event from a newer ticket or stage so an old cue cannot
+  // block the next spin's own announcement.
+  if ((state.guard === "reach" || state.guard === "push") && !isSameProtectedReach(state, snapshot)) {
+    state = { ...EMPTY_FEEDBACK, ...values };
+  }
+
   if (event.type === "result") {
     return { ...values, text: eventText(event, snapshot) ?? "", guard: "result" };
   }
@@ -301,6 +313,10 @@ export function syncPachiFeedback(
   }
 
   if (state.guard === "miss" && !sameMissReveal) return { ...EMPTY_FEEDBACK, ...values };
+
+  if ((state.guard === "reach" || state.guard === "push") && !isSameProtectedReach(state, snapshot)) {
+    return { ...EMPTY_FEEDBACK, ...values };
+  }
 
   if (state.guard === "rush-end" &&
       (state.ticket !== snapshot.spin.ticket || state.spinStage !== snapshot.spin.stage)) {
