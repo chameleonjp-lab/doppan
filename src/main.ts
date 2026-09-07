@@ -280,6 +280,8 @@ function updatePocketLabels(snapshot: PachiSessionSnapshot): void {
       : "available";
   const attackerState = snapshot.jackpotRemaining > 0
     ? "open"
+    : snapshot.rushStage === "judge"
+      ? "closed"
     : snapshot.phase === "settling"
       ? "settling"
       : "closed";
