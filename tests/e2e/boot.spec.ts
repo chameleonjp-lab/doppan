@@ -386,34 +386,6 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
   });
 
-  test("shows the attacker gate as CLOSED during terminal rush judgment", async ({ page }) => {
-    test.setTimeout(70_000);
-    await page.setViewportSize({ width: 402, height: 874 });
-    await installDeterministicClock(page);
-    // Seed 21 reaches an open RUSH interval at the natural deadline. After
-    // that interval closes, the terminal settlement briefly enters judgment;
-    // the attacker must be shown as closed during that one-second window.
-    await boot(page, "/?debug=1&seed=21");
-    await startGame(page);
-    await beginPointerFire(page);
-
-    let terminalJudgment: RootDiagnostics | undefined;
-    for (let elapsed = 0; elapsed < 100_000; elapsed += clockStepMs) {
-      await runClock(page, clockStepMs);
-      const visible = await readRootDiagnostics(page);
-      if (visible.phase === "settling" && visible.rushStage === "judge") {
-        terminalJudgment = visible;
-        break;
-      }
-    }
-
-    expect(terminalJudgment).toMatchObject({ phase: "settling", rushStage: "judge" });
-    await expect(page.locator("[data-mouth-label=attacker]")).toHaveText("得点口 CLOSED");
-    await expect(page.locator("[data-mouth-label=attacker]")).toHaveAttribute("data-pocket-state", "closed");
-    await page.mouse.up();
-    await flushInputFrame(page);
-  });
-
   const runSeededMissRevealEvidence = async (
     page: Page,
     testInfo: TestInfo,
@@ -1309,5 +1281,33 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator("[data-action=reload]")).toBeEnabled();
     await expect(page.locator(fireSelector)).toBeDisabled();
     await expect(page.locator("[data-action=start]")).toBeDisabled();
+  });
+
+  test("shows the attacker gate as CLOSED during terminal rush judgment", async ({ page }) => {
+    test.setTimeout(70_000);
+    await page.setViewportSize({ width: 402, height: 874 });
+    await installDeterministicClock(page);
+    // Seed 21 reaches an open RUSH interval at the natural deadline. After
+    // that interval closes, the terminal settlement briefly enters judgment;
+    // the attacker must be shown as closed during that one-second window.
+    await boot(page, "/?debug=1&seed=21");
+    await startGame(page);
+    await beginPointerFire(page);
+
+    let terminalJudgment: RootDiagnostics | undefined;
+    for (let elapsed = 0; elapsed < 100_000; elapsed += clockStepMs) {
+      await runClock(page, clockStepMs);
+      const visible = await readRootDiagnostics(page);
+      if (visible.phase === "settling" && visible.rushStage === "judge") {
+        terminalJudgment = visible;
+        break;
+      }
+    }
+
+    expect(terminalJudgment).toMatchObject({ phase: "settling", rushStage: "judge" });
+    await expect(page.locator("[data-mouth-label=attacker]")).toHaveText("得点口 CLOSED");
+    await expect(page.locator("[data-mouth-label=attacker]")).toHaveAttribute("data-pocket-state", "closed");
+    await page.mouse.up();
+    await flushInputFrame(page);
   });
 });
