@@ -130,6 +130,7 @@ const COLOR = {
   attacker: 0xf08b3e,
   reach: 0xeeb777,
   revival: 0xd3aff2,
+  revealed: 0xb7cad6,
   drain: 0x321021,
   white: 0xffffff,
 } as const;
@@ -546,10 +547,21 @@ export async function createPachiRenderer(
     const reach = stage === "reach";
     const revival = stage === "revival";
     const judge = stage === "judge";
-    const color = jackpot ? COLOR.goldBright : revival || judge ? COLOR.revival : reach ? COLOR.reach : COLOR.silverDark;
+    const revealed = stage === "reveal";
+    const color = jackpot ? COLOR.goldBright : revival || judge ? COLOR.revival : reach ? COLOR.reach : revealed ? COLOR.revealed : COLOR.silverDark;
     dynamicDecor
       .roundRect(screen.x - 4, screen.y - 4, screen.width + 8, screen.height + 8, 20)
-      .stroke({ color, width: jackpot || revival ? 2.4 : 1.6, alpha: jackpot ? 0.62 : reach || revival ? 0.6 + pulse * 0.12 : 0.38 });
+      .stroke({ color, width: jackpot || revival || revealed ? 2.4 : 1.6, alpha: jackpot ? 0.62 : revealed ? 0.78 : reach || revival ? 0.6 + pulse * 0.12 : 0.38 });
+
+    // A single horizontal stop marks the disclosed miss. It stays inside the
+    // existing rim footprint, with no pulse or added result clock.
+    if (revealed) {
+      const center = screen.x + screen.width / 2;
+      dynamicDecor
+        .moveTo(center - 26, screen.y + screen.height + 6)
+        .lineTo(center + 26, screen.y + screen.height + 6)
+        .stroke({ color, width: 3.4, alpha: 0.9 });
+    }
 
     // These marks stay outside the HTML well. Their fixed shapes survive motion
     // reduction: paired stops for reach, four corners for revival/confirmation,

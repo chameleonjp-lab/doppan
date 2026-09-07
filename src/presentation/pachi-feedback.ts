@@ -14,6 +14,7 @@ export type PachiPresentationStage =
   | "preview"
   | "spinning"
   | "reach"
+  | "reveal"
   | "revival"
   | "jackpot"
   | "judge"
@@ -28,6 +29,7 @@ export type PachiFeedbackGuard =
   | "none"
   | "reach"
   | "push"
+  | "miss"
   | "bonus"
   | "judge"
   | "rush-end"
@@ -61,6 +63,35 @@ export function createPachiFeedbackState(): PachiFeedbackState {
   return EMPTY_FEEDBACK;
 }
 
+/**
+ * Format only the charge that is already public in the current snapshot.
+ *
+ * The session exposes the fifth miss only after its reveal, so this helper
+ * never looks at pending ticket cues or a ticket's hidden outcome.
+ */
+export function getPachiChargeText(snapshot: PachiSessionSnapshot): string {
+  const charge = Math.min(5, Math.max(0, Math.trunc(snapshot.charge)));
+  return charge >= 5 ? "チャージ 5 / 5 · 次は大当たり" : `チャージ ${charge} / 5`;
+}
+
+const isPublicMissReveal = (snapshot: PachiSessionSnapshot): boolean =>
+  snapshot.spin.stage === "reveal" && snapshot.spin.reveal === "miss";
+
+/**
+ * Return the loss cue only while the current snapshot publicly shows it.
+ * A drained old reveal event cannot disclose a result for a newer snapshot.
+ */
+export function getPachiMissFeedbackText(snapshot: PachiSessionSnapshot): string | null {
+  if (!isPublicMissReveal(snapshot)) return null;
+  return `はずれ。${getPachiChargeText(snapshot)}。`;
+}
+
+const isSamePublicMissReveal = (state: PachiFeedbackState, snapshot: PachiSessionSnapshot): boolean =>
+  state.guard === "miss" &&
+  isPublicMissReveal(snapshot) &&
+  state.ticket === snapshot.spin.ticket &&
+  state.spinStage === snapshot.spin.stage;
+
 function context(snapshot: PachiSessionSnapshot): Pick<PachiFeedbackState, "phase" | "ticket" | "spinStage"> {
   return {
     phase: snapshot.phase,
@@ -82,6 +113,7 @@ export function getPachiVisualState(snapshot: PachiSessionSnapshot): PachiVisual
   if (snapshot.phase === "idle") return { target: "none", stage: "normal" };
   if (snapshot.jackpotRemaining > 0) return { target: "attacker", stage: "jackpot" };
   if (snapshot.rushStage === "judge") return { target: "none", stage: "judge" };
+  if (isPublicMissReveal(snapshot)) return { target: "none", stage: "reveal" };
   if (snapshot.spin.stage === "reach") return { target: "none", stage: "reach" };
   if (snapshot.spin.stage === "revival") return { target: "none", stage: "revival" };
 
@@ -111,7 +143,7 @@ const eventText = (event: PachiSessionEvent, snapshot?: PachiSessionSnapshot): s
     case "spin-push":
       return "PUSH受付！ 結果を待とう。";
     case "spin-reveal":
-      return event.win === false ? "はずれ。5回続くと、次は大当たり。" : "大当たり！";
+      return event.win === false ? (snapshot ? getPachiMissFeedbackText(snapshot) : null) : "大当たり！";
     case "jackpot-start":
       return event.opened === false
         ? "保留の大当たり ＋1,500点を受け取りました。"
@@ -182,11 +214,24 @@ export function applyPachiFeedbackEvent(
     state = { ...EMPTY_FEEDBACK, ...values };
   }
 
+  // A miss cue belongs to the publicly revealed ticket, including its
+  // reveal hold. Release it before reducing any event from a newer ticket or
+  // stage so an old spin-reveal cannot poison the next ticket's announcement.
+  if (state.guard === "miss" && !isSamePublicMissReveal(state, snapshot)) {
+    state = { ...EMPTY_FEEDBACK, ...values };
+  }
+
   if (event.type === "result") {
     return { ...values, text: eventText(event, snapshot) ?? "", guard: "result" };
   }
 
   if (state.guard === "result" && snapshot.phase === "result") return { ...state, ...values };
+
+  // Keep the revealed loss visible through incidental entries, recovery, and
+  // deadline transition while this exact ticket is still in its reveal hold.
+  if (isSamePublicMissReveal(state, snapshot) && event.type !== "spin-reveal") {
+    return { ...state, ...values };
+  }
 
   // The one-second judge is intentionally neutral.  In particular, do not
   // read or format snapshot.rushResult while it is in this state.
@@ -225,6 +270,7 @@ export function applyPachiFeedbackEvent(
 
   let guard: PachiFeedbackGuard = "none";
   if (isProtectedReachEvent(event)) guard = event.type === "spin-push" ? "push" : "reach";
+  else if (event.type === "spin-reveal" && event.win === false && isPublicMissReveal(snapshot)) guard = "miss";
   else if (event.type === "jackpot-start" && event.opened !== false) guard = "bonus";
   else if (event.type === "rush-continue") guard = "bonus";
   else if (event.type === "rush-judge") guard = "judge";
@@ -248,9 +294,13 @@ export function syncPachiFeedback(
   if (snapshot.phase === "idle") return { ...EMPTY_FEEDBACK, ...values };
   if (snapshot.phase === "result" && state.guard !== "result") return { ...EMPTY_FEEDBACK, ...values };
 
-  if (state.phase !== snapshot.phase && state.guard !== "reach" && state.guard !== "push") {
+  const sameMissReveal = isSamePublicMissReveal(state, snapshot);
+
+  if (state.phase !== snapshot.phase && state.guard !== "reach" && state.guard !== "push" && !sameMissReveal) {
     return { ...EMPTY_FEEDBACK, ...values };
   }
+
+  if (state.guard === "miss" && !sameMissReveal) return { ...EMPTY_FEEDBACK, ...values };
 
   if (state.guard === "rush-end" &&
       (state.ticket !== snapshot.spin.ticket || state.spinStage !== snapshot.spin.stage)) {

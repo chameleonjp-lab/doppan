@@ -84,6 +84,64 @@ async function expectMouthLayoutInViewport(page: Page): Promise<void> {
   }
 }
 
+type RectGeometry = {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+};
+
+type MachineGeometry = {
+  readonly play: RectGeometry;
+  readonly machine: RectGeometry & { readonly width: number; readonly height: number };
+  readonly lcd: RectGeometry & { readonly clientWidth: number; readonly scrollWidth: number };
+  readonly detail: RectGeometry & { readonly clientWidth: number; readonly scrollWidth: number };
+};
+
+async function readMachineGeometry(page: Page): Promise<MachineGeometry> {
+  return page.locator(".play-area").evaluate((playArea) => {
+    const rect = (element: Element): RectGeometry => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom };
+    };
+    const machine = playArea.querySelector<HTMLElement>("[data-machine]");
+    const lcd = playArea.querySelector<HTMLElement>("[data-reel-display]");
+    const detail = playArea.querySelector<HTMLElement>("[data-spin-detail]");
+    if (machine === null || lcd === null || detail === null) throw new Error("machine LCD geometry is incomplete");
+    const machineBounds = machine.getBoundingClientRect();
+    return {
+      play: rect(playArea),
+      machine: {
+        ...rect(machine),
+        width: machineBounds.width,
+        height: machineBounds.height,
+      },
+      lcd: { ...rect(lcd), clientWidth: lcd.clientWidth, scrollWidth: lcd.scrollWidth },
+      detail: { ...rect(detail), clientWidth: detail.clientWidth, scrollWidth: detail.scrollWidth },
+    };
+  });
+}
+
+async function expectMachineGeometryInViewport(page: Page): Promise<void> {
+  const layout = await readMachineGeometry(page);
+  expect(layout.machine.left).toBeGreaterThanOrEqual(layout.play.left - 1);
+  expect(layout.machine.right).toBeLessThanOrEqual(layout.play.right + 1);
+  expect(layout.machine.top).toBeGreaterThanOrEqual(layout.play.top - 1);
+  expect(layout.machine.bottom).toBeLessThanOrEqual(layout.play.bottom + 1);
+  expect(Math.abs(layout.machine.width / layout.machine.height - 4 / 5)).toBeLessThanOrEqual(0.01);
+  expect(layout.lcd.scrollWidth).toBeLessThanOrEqual(layout.lcd.clientWidth);
+  expect(layout.detail.scrollWidth).toBeLessThanOrEqual(layout.detail.clientWidth);
+  expect(layout.detail.left).toBeGreaterThanOrEqual(layout.lcd.left);
+  expect(layout.detail.right).toBeLessThanOrEqual(layout.lcd.right);
+}
+
+async function reelsSnapshot(page: Page): Promise<Array<{ text: string | null; spinning: string | null }>> {
+  return page.locator("[data-reel]").evaluateAll((reels) => reels.map((reel) => ({
+    text: reel.textContent,
+    spinning: reel.getAttribute("data-spinning"),
+  })));
+}
+
 async function installDeterministicClock(page: Page): Promise<void> {
   await page.clock.install({ time: new Date("2026-09-05T00:00:00.000Z") });
   deterministicClockPages.add(page);
@@ -322,6 +380,163 @@ test.describe("90秒パチンコ体験", () => {
     const afterRelease = await readRootDiagnostics(page);
     expect(afterRelease.fired).toBe(released.fired);
     await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+  });
+
+  const runSeededMissRevealEvidence = async (
+    page: Page,
+    testInfo: TestInfo,
+    options: { readonly label: string; readonly width: number; readonly height: number; readonly pauseAtFifth: boolean },
+  ): Promise<void> => {
+    // Keep the viewport fixed for the whole scenario. A same-document resize
+    // is a browser/ResizeObserver scheduling concern, not part of this
+    // gameplay contract; the normal viewport matrix test covers reload-time
+    // fitting while this test keeps the reveal evidence deterministic.
+    await page.setViewportSize({ width: options.width, height: options.height });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await installDeterministicClock(page);
+    await boot(page, "/?debug=1&seed=3");
+    await startGame(page);
+
+    // Seed 3 at the calibrated 80% preset produces five actual misses before
+    // the guaranteed ticket. Keep a real pointer hold active so the reveal
+    // guard is exercised while ordinary firing and pocket events continue.
+    const power = page.locator("#power");
+    await power.fill("1");
+    await expect(power).toHaveAttribute("aria-valuetext", "80");
+    await beginPointerFire(page);
+
+    const missReveal = async (charge: number, screenshotName?: string): Promise<void> => {
+      await advanceUntil(
+        page,
+        async () => {
+          const visible = await readRootDiagnostics(page);
+          return visible.spinStage === "reveal" && await page.locator("[data-spin-title]").textContent() === "はずれ";
+        },
+        30_000,
+        `seed-3 miss reveal ${charge} at ${options.label}`,
+      );
+
+      expect(await readRootDiagnostics(page)).toMatchObject({
+        spinStage: "reveal",
+        focusTarget: "none",
+        presentationStage: "reveal",
+      });
+      await expect(page.locator("[data-spin-title]")).toHaveText("はずれ");
+      const reels = page.locator("[data-reel]");
+      await expect(reels).toHaveCount(3);
+      for (const reel of await reels.all()) {
+        await expect(reel).toHaveAttribute("data-spinning", "false");
+      }
+      await expect(page.locator("[data-charge]")).toHaveAttribute("value", String(charge));
+      if (charge === 5) {
+        // The compact HUD label intentionally uses the short guarantee copy;
+        // the event line remains the exact public 5 / 5 announcement.
+        await expect(page.locator("[data-charge-label]")).toContainText("次は大当たり");
+        await expect(page.locator("[data-spin-detail]")).toHaveText("次は大当たり");
+      } else {
+        await expect(page.locator("[data-charge-label]")).toHaveText(`チャージ ${charge} / 5`);
+        await expect(page.locator("[data-spin-detail]")).toHaveText(`チャージ ${charge} / 5`);
+      }
+      const expectedEvent = charge === 5
+        ? "はずれ。チャージ 5 / 5 · 次は大当たり。"
+        : `はずれ。チャージ ${charge} / 5。`;
+      await expect(page.locator("[data-event]")).toHaveText(expectedEvent);
+      await expectMachineGeometryInViewport(page);
+      await expectMouthLayoutInViewport(page);
+      if (screenshotName !== undefined) await screenshot(page, testInfo, screenshotName);
+    };
+
+    await missReveal(1, `${options.label}-miss`);
+
+    // A held control remains active during the reveal, but the world may be
+    // at its finite ball cap. Assert the public firing state and preserved
+    // announcement instead of assuming that a new shot must be emitted.
+    const firstEvent = await page.locator("[data-event]").textContent();
+    const firstBefore = await readRootDiagnostics(page);
+    for (let sample = 0; sample < 2; sample += 1) {
+      await runClock(page, clockStepMs);
+      await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "true");
+      await expect(page.locator("[data-event]")).toHaveText(firstEvent ?? "");
+      expect(await readRootDiagnostics(page)).toMatchObject({
+        spinStage: "reveal",
+        focusTarget: "none",
+        presentationStage: "reveal",
+      });
+    }
+    // The second bounded sample includes a natural START entry for this
+    // calibrated seed. It proves the miss guard survives a real incidental
+    // event without requiring a new shot when the ball cap is full.
+    const firstAfter = await readRootDiagnostics(page);
+    expect(Number(firstAfter.startEntries ?? "0")).toBeGreaterThan(Number(firstBefore.startEntries ?? "0"));
+
+    for (const charge of [2, 3, 4, 5] as const) {
+      await advanceUntil(
+        page,
+        async () => (await readRootDiagnostics(page)).spinStage !== "reveal",
+        2_000,
+        `seed-3 next stage after charge ${charge - 1} at ${options.label}`,
+      );
+      await missReveal(charge, charge === 5 ? `${options.label}-fifth-charge` : undefined);
+    }
+
+    // Release the captured FIRE pointer before clicking PAUSE. A captured
+    // pointer can retarget the pause click to the firing control.
+    await page.mouse.up();
+    await flushInputFrame(page);
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+
+    if (!options.pauseAtFifth) return;
+
+    const pausedText = await page.locator("[data-event]").textContent();
+    const pausedBefore = await readRootDiagnostics(page);
+    const pausedReels = await reelsSnapshot(page);
+    await page.locator("[data-action=pause]").click();
+    await expect(root(page)).toHaveAttribute("data-paused", "true");
+    await runClock(page, 1_000);
+    expect(await readRootDiagnostics(page)).toMatchObject({
+      paused: "true",
+      spinStage: "reveal",
+      focusTarget: "none",
+      presentationStage: "reveal",
+      fired: pausedBefore.fired,
+    });
+    await expect(page.locator("[data-event]")).toHaveText(pausedText ?? "");
+    expect(await reelsSnapshot(page)).toEqual(pausedReels);
+
+    await page.locator("[data-action=resume]").click();
+    await expect(root(page)).toHaveAttribute("data-paused", "false");
+    await advanceUntil(
+      page,
+      async () => (await readRootDiagnostics(page)).spinStage !== "reveal",
+      2_000,
+      `seed-3 stage release after resume at ${options.label}`,
+    );
+    expect(await readRootDiagnostics(page)).toMatchObject({
+      spinStage: "spinning",
+      focusTarget: "start",
+      presentationStage: "spinning",
+    });
+    await expect(page.locator("[data-event]")).not.toContainText("はずれ");
+  };
+
+  test("keeps the seeded miss reveal readable at a fixed 402x874 viewport", async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    await runSeededMissRevealEvidence(page, testInfo, {
+      label: "fixed-402x874",
+      width: 402,
+      height: 874,
+      pauseAtFifth: true,
+    });
+  });
+
+  test("keeps the seeded miss reveal readable at a fixed 320x568 viewport", async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    await runSeededMissRevealEvidence(page, testInfo, {
+      label: "fixed-320x568",
+      width: 320,
+      height: 568,
+      pauseAtFifth: false,
+    });
   });
 
   test("routes Space keydown/up and releases a real pointer on cancel and lost capture", async ({ page }) => {

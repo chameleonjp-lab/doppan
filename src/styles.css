@@ -922,6 +922,21 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{
   background:radial-gradient(ellipse at center,#302335,#190f1b);
   box-shadow:inset 0 0 12px #06040ba6
 }
+[data-presentation-stage=reveal] .reel-display{
+  border-color:#b7cad6;
+  background:radial-gradient(ellipse at center,#29303a,#15111b);
+  box-shadow:inset 0 0 12px #06040ba6
+}
+[data-presentation-stage=reveal] .reel-display h2,
+[data-presentation-stage=reveal] .display-subtitle{
+  color:#edf3f6
+}
+[data-presentation-stage=reveal] .reels span{
+  color:#dce6ed;
+  text-shadow:0 1px 0 #334252;
+  border-color:#677681;
+  background:linear-gradient(#20202c,#39434d 50%,#191720)
+}
 [data-presentation-stage=reach] .reel-display[data-push-accepted=true]{
   border-bottom-color:#8ff0d9;
   box-shadow:inset 0 -5px 10px #52c5ab24
