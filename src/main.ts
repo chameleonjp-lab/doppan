@@ -244,6 +244,7 @@ function renderReels(snapshot: PachiSessionSnapshot): void {
   const detail = judging ? "結果を待とう。" : opening ? `得点口 あと${snapshot.jackpotRemaining.toFixed(1)}秒` :
     spin.stage === "revival" ? (spin.stopped[1] ? "まだ、終わらない" : "再始動！ ここから巻き返す") : spin.stage === "preview" && spin.cue === "guaranteed" ? "この保留で大当たり" :
     spin.stage === "reach" ? "あと、ひとつ。" : spin.stage === "reveal" && spin.reveal === "miss" ? snapshot.charge >= 5 ? "次は大当たり" : getPachiChargeText(snapshot) :
+    spin.stage === "reveal" && spin.reveal === "win" ? "当たり ＋1,500点" :
     snapshot.pending >= 4 ? "保留満タン · 発射を休めます" : "3つそろえば大当たり";
   setText(ui.detail, detail);
   setText(ui.pendingCount, `${snapshot.pending} / 4`);
