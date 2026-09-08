@@ -29,6 +29,23 @@ Astra・Highが状態境界を調査し、Sol・Highが0.72秒保持を局所的
 
 既存1〜64は再発確認用。広い固定256条件を調整用、別の256条件を確認用とし、速い操作と0.3秒・0.6秒遅れを分ける。固定50/80/95、満杯休止、BONUS50/80、閉鎖前の早止めを同じ枠組みで扱う。画面の強さと内部値は既存のプリセットから変換する。
 
+PR-Bでは `scripts/pachi-calibration-v2.ts` がこの条件を固定する。`tuning-v1` は固定3条件と動的4方針×3遅延の15条件、`legacy` は固定3条件、`holdout-v1` は候補manifest確定後の固定3条件と候補の各3遅延を実行する。seed、条件、100ms controller、早止め0.6秒、設定checksumをmanifestへ記録し、`--shard k/n` と決定的mergeで全件の欠落・重複を検査する。ランナーは利用者の操作、localStorage、IndexedDB、Cookie、外部通信を参照しない。
+
+実行例（Node 24のTypeScript stripを経由するVitest harness）:
+
+```text
+DOPPAN_CALIBRATION_RUN=1 DOPPAN_CALIBRATION_COMMIT=$(git rev-parse HEAD) \
+DOPPAN_CALIBRATION_COHORT=tuning-v1 \
+DOPPAN_CALIBRATION_SHARD=1/8 DOPPAN_CALIBRATION_OUT=reports/pachi/tuning-1.json \
+npm run calibrate:pachi:v2
+```
+
+校正harnessは指定したcommitがcheckout中の`HEAD`と一致し、tracked worktreeがcleanである場合だけ実行する。生成したreportのcommitもmerge/evaluate時に同じ値で照合する。
+
+校正をmergeして合格した後、`DOPPAN_CALIBRATION_CANDIDATE_OUT=candidate.json` を付けた評価で、ゲームコミット・設定checksum・tuning report checksumを束ねたcandidate manifestを一度だけ生成する。候補を固定したholdoutは、そのファイルを `DOPPAN_CALIBRATION_CANDIDATE_MANIFEST=candidate.json` で読み込んで開始する。環境変数で候補方針を直接渡す経路は設けない。結果を見て候補、seed、閾値を差し替えない。
+
+全 shardを揃えた後は、同じ `DOPPAN_CALIBRATION_COMMIT` を指定して `DOPPAN_CALIBRATION_MERGE=a.json,b.json,... DOPPAN_CALIBRATION_OUT=tuning-merged.json` で欠落・重複・commit/config/seedの不一致を検査し、`DOPPAN_CALIBRATION_EVALUATE=tuning-merged.json npm run calibrate:pachi:v2` で固定条件の10秒・30秒entry、paired median、R-7 quantile、IQR、bootstrap CI、Wilson下限、BONUSのdue eligible後成功率を出力する。評価器は3840件未満のreportを拒否し、BONUS対象が128区間未満なら合否でなく `indeterminate` として出力する。
+
 得点の下位10%・中央値・上位10%、初回受理、総時間、満杯時間、拒否理由、開放後に発射した球の入賞を記録する。人工検査の記録だけを開発環境へ保存し、プレイヤーの記録・通信は追加しない。有用な差、ばらつき、下位許容、条件の除外禁止を結果を見る前に固定する。発射と抽選が同じ乱数列を使うため、同一seedでも操作を変えれば抽選列も変わることを明示する。
 
 UIは主状態14px以上を初期目標、操作44px以上・可能なら48pxとし、390×844、402×874、430×932、320×568、横向きで確認する。精算では現在の作業を説明し、結果では受理と拒否を分け、実際の行動に沿う助言を一つ示す。演出は実イベントに限り、球・当たり結果を隠さず、先決めした当落を漏らさない。
