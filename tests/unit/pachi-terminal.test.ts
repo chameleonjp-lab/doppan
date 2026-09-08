@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PachiSession } from "../../src/game/pachi-session";
+import { PACHI_BALL_LIFETIME_SECONDS } from "../../src/game/pachi-types";
 import type { PachiSessionEvent, PachiSessionSnapshot } from "../../src/game/pachi-types";
 import {
   applyPachiFeedbackEvent,
@@ -10,6 +11,7 @@ import {
 
 const FIXED_STEP_MS = 1000 / 120;
 const FIXED_STEP_SECONDS = 1 / 120;
+const TIME_EPSILON_SECONDS = 1e-8;
 
 function startSeedOne(): PachiSession {
   const session = new PachiSession({ seed: 1, durationSeconds: 90 });
@@ -73,7 +75,11 @@ describe("Pachi terminal settlement", () => {
         // the reclaim event is emitted after that step. One fixed step is the
         // timestamp boundary; the world age itself has already reached eight
         // seconds when the lifetime sweep removes the ball.
-        if (fired !== undefined) expect(event.at - fired).toBeGreaterThanOrEqual(8 - FIXED_STEP_SECONDS - 1e-8);
+        if (fired !== undefined) {
+          expect(event.at - fired).toBeGreaterThanOrEqual(
+            PACHI_BALL_LIFETIME_SECONDS - FIXED_STEP_SECONDS - TIME_EPSILON_SECONDS,
+          );
+        }
       }
 
       const boundaryAt = (tick + 1) * FIXED_STEP_SECONDS;
@@ -84,7 +90,8 @@ describe("Pachi terminal settlement", () => {
         // this boundary, even though their individual age is well below 8s.
         const freshBefore = before.balls.filter((ball) => {
           const fired = firedAt.get(ball.id);
-          return fired !== undefined && boundaryAt - fired < 8;
+          return fired !== undefined &&
+            boundaryAt - fired < PACHI_BALL_LIFETIME_SECONDS - FIXED_STEP_SECONDS - TIME_EPSILON_SECONDS;
         });
         expect(freshBefore.length).toBeGreaterThan(0);
         t98YoungIds = new Set(freshBefore.map((ball) => ball.id));
