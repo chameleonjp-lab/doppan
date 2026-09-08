@@ -26,7 +26,6 @@ export const PACHI_FIRE_INTERVAL_SECONDS = 0.2 as const;
 export const PACHI_PREVIEW_SECONDS = 0.36 as const;
 export const PACHI_DEFAULT_DURATION_SECONDS = 90 as const;
 export const PACHI_JACKPOT_SECONDS = 6 as const;
-export const PACHI_MAX_SETTLE_SECONDS = 8 as const;
 /** Hard upper bound for resolving four queued tickets after the deadline. */
 export const PACHI_MAX_SESSION_SETTLE_SECONDS = 60 as const;
 

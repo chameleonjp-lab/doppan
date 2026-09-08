@@ -30,6 +30,7 @@ export type PachiFeedbackGuard =
   | "reach"
   | "push"
   | "miss"
+  | "win"
   | "bonus"
   | "judge"
   | "rush-end"
@@ -77,6 +78,9 @@ export function getPachiChargeText(snapshot: PachiSessionSnapshot): string {
 const isPublicMissReveal = (snapshot: PachiSessionSnapshot): boolean =>
   snapshot.spin.stage === "reveal" && snapshot.spin.reveal === "miss";
 
+const isPublicWinReveal = (snapshot: PachiSessionSnapshot): boolean =>
+  snapshot.spin.stage === "reveal" && snapshot.spin.reveal === "win";
+
 /**
  * Return the loss cue only while the current snapshot publicly shows it.
  * A drained old reveal event cannot disclose a result for a newer snapshot.
@@ -89,6 +93,12 @@ export function getPachiMissFeedbackText(snapshot: PachiSessionSnapshot): string
 const isSamePublicMissReveal = (state: PachiFeedbackState, snapshot: PachiSessionSnapshot): boolean =>
   state.guard === "miss" &&
   isPublicMissReveal(snapshot) &&
+  state.ticket === snapshot.spin.ticket &&
+  state.spinStage === snapshot.spin.stage;
+
+const isSamePublicWinReveal = (state: PachiFeedbackState, snapshot: PachiSessionSnapshot): boolean =>
+  state.guard === "win" &&
+  isPublicWinReveal(snapshot) &&
   state.ticket === snapshot.spin.ticket &&
   state.spinStage === snapshot.spin.stage;
 
@@ -108,17 +118,18 @@ function context(snapshot: PachiSessionSnapshot): Pick<PachiFeedbackState, "phas
 /**
  * Derive board focus from the session snapshot only.
  *
- * It deliberately does not inspect spin.win, spin.reveal, pending cues, or
- * rushResult.  Those values disclose a result before the presentation stage
- * is allowed to do so.  `paused` likewise leaves the physical focus intact;
- * the existing renderer clock is responsible for stopping motion.
+ * It deliberately does not inspect hidden outcome fields, pending cues, or
+ * rushResult. Public `reveal` snapshots are already at their presentation
+ * stage, so both miss and post-terminal win holds can keep the LCD focus
+ * without disclosing an earlier result. `paused` likewise leaves the
+ * physical focus intact; the existing renderer clock stops motion.
  */
 export function getPachiVisualState(snapshot: PachiSessionSnapshot): PachiVisualState {
   if (snapshot.phase === "result") return { target: "none", stage: "result" };
   if (snapshot.phase === "idle") return { target: "none", stage: "normal" };
   if (snapshot.jackpotRemaining > 0) return { target: "attacker", stage: "jackpot" };
   if (snapshot.rushStage === "judge") return { target: "none", stage: "judge" };
-  if (isPublicMissReveal(snapshot)) return { target: "none", stage: "reveal" };
+  if (isPublicMissReveal(snapshot) || isPublicWinReveal(snapshot)) return { target: "none", stage: "reveal" };
   if (snapshot.spin.stage === "reach") return { target: "none", stage: "reach" };
   if (snapshot.spin.stage === "revival") return { target: "none", stage: "revival" };
 
@@ -226,6 +237,13 @@ export function applyPachiFeedbackEvent(
     state = { ...EMPTY_FEEDBACK, ...values };
   }
 
+  // A post-terminal winning ticket has already been paid, but its triple is
+  // still visible for the fixed reveal hold. Keep that announcement scoped to
+  // this exact ticket/stage so incidental entries cannot replace it.
+  if (state.guard === "win" && !isSamePublicWinReveal(state, snapshot)) {
+    state = { ...EMPTY_FEEDBACK, ...values };
+  }
+
   // Reach/PUSH belongs to one ticket and one presentation stage. Release it
   // before reducing an event from a newer ticket or stage so an old cue cannot
   // block the next spin's own announcement.
@@ -242,6 +260,10 @@ export function applyPachiFeedbackEvent(
   // Keep the revealed loss visible through incidental entries, recovery, and
   // deadline transition while this exact ticket is still in its reveal hold.
   if (isSamePublicMissReveal(state, snapshot) && event.type !== "spin-reveal") {
+    return { ...state, ...values };
+  }
+
+  if (isSamePublicWinReveal(state, snapshot) && event.type !== "jackpot-start") {
     return { ...state, ...values };
   }
 
@@ -283,6 +305,7 @@ export function applyPachiFeedbackEvent(
   let guard: PachiFeedbackGuard = "none";
   if (isProtectedReachEvent(event)) guard = event.type === "spin-push" ? "push" : "reach";
   else if (event.type === "spin-reveal" && event.win === false && isPublicMissReveal(snapshot)) guard = "miss";
+  else if (event.type === "jackpot-start" && event.opened === false && isPublicWinReveal(snapshot)) guard = "win";
   else if (event.type === "jackpot-start" && event.opened !== false) guard = "bonus";
   else if (event.type === "rush-continue") guard = "bonus";
   else if (event.type === "rush-judge") guard = "judge";
@@ -307,12 +330,14 @@ export function syncPachiFeedback(
   if (snapshot.phase === "result" && state.guard !== "result") return { ...EMPTY_FEEDBACK, ...values };
 
   const sameMissReveal = isSamePublicMissReveal(state, snapshot);
+  const sameWinReveal = isSamePublicWinReveal(state, snapshot);
 
-  if (state.phase !== snapshot.phase && state.guard !== "reach" && state.guard !== "push" && !sameMissReveal) {
+  if (state.phase !== snapshot.phase && state.guard !== "reach" && state.guard !== "push" && !sameMissReveal && !sameWinReveal) {
     return { ...EMPTY_FEEDBACK, ...values };
   }
 
   if (state.guard === "miss" && !sameMissReveal) return { ...EMPTY_FEEDBACK, ...values };
+  if (state.guard === "win" && !sameWinReveal) return { ...EMPTY_FEEDBACK, ...values };
 
   if ((state.guard === "reach" || state.guard === "push") && !isSameProtectedReach(state, snapshot)) {
     return { ...EMPTY_FEEDBACK, ...values };

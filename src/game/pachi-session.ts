@@ -9,7 +9,6 @@ import {
   PACHI_INITIAL_BALLS,
   PACHI_JACKPOT_SECONDS,
   PACHI_MAX_PENDING,
-  PACHI_MAX_SETTLE_SECONDS,
   PACHI_MAX_SESSION_SETTLE_SECONDS,
   PACHI_PREVIEW_SECONDS,
 } from "./pachi-types";
@@ -141,7 +140,6 @@ export class PachiSession {
   private displayedMissesValue = 0;
   private jackpotRemainingValue = 0;
   private deadlineReached = false;
-  private ballCollectionSettled = false;
   private eventSequence = 1;
   private readonly events: PachiSessionEvent[] = [];
   private statsValue: PachiStatsSnapshot = {
@@ -221,7 +219,6 @@ export class PachiSession {
     this.displayedMissesValue = 0;
     this.jackpotRemainingValue = 0;
     this.deadlineReached = false;
-    this.ballCollectionSettled = false;
     this.eventSequence = 1;
     this.events.length = 0;
     this.statsValue = {
@@ -568,6 +565,18 @@ export class PachiSession {
   private advanceSpin(deltaSeconds: number): void {
     const spin = this.spinValue;
     if (spin === null) return;
+
+    // A post-terminal winning ticket has no BONUS to open, but its settled
+    // triple remains visible for the same 0.72-second result window as a
+    // regular reveal.  Keep this branch before the normal spin transitions:
+    // the fixed step that calls finalizeSpin must not consume the first slice
+    // of the newly-created hold.
+    if (spin.stage === "reveal" && spin.reveal === "win") {
+      spin.holdRemaining -= deltaSeconds;
+      if (spin.holdRemaining <= 0) this.spinValue = null;
+      return;
+    }
+
     spin.elapsed += deltaSeconds;
 
     // A guaranteed winning ticket may show a short, explicit revival state.
@@ -637,14 +646,17 @@ export class PachiSession {
     this.statsValue = { ...this.statsValue, missesSinceWin: this.displayedMissesValue };
     this.emit("spin-reveal", { digits: spin.ticket.digits, win: spin.ticket.win });
     if (spin.ticket.win) {
-      this.startJackpot(spin.ticket);
-      // A post-deadline ticket after the terminal BONUS still receives its
-      // fixed jackpot award, but cannot open a second physical BONUS.
-      if (this.rushStageValue === "idle") this.spinValue = null;
+      const opened = this.startJackpot(spin.ticket);
+      if (!opened) {
+        // A post-terminal ticket still exposes its already-determined triple
+        // and one-shot jackpot award before the next FIFO ticket/result.
+        spin.stage = "reveal";
+        spin.holdRemaining = REVEAL_HOLD;
+      }
     }
   }
 
-  private startJackpot(ticket: Ticket): void {
+  private startJackpot(ticket: Ticket): boolean {
     this.awardJackpot();
     const canOpenBonus = !this.deadlineReached || !this.settlingBonusClaimedValue;
     if (!canOpenBonus) {
@@ -657,7 +669,7 @@ export class PachiSession {
       this.jackpotRemainingValue = 0;
       this.worldValue.setAttackerOpen(false);
       this.emit("jackpot-start", { score: this.scoreValue, opened: false });
-      return;
+      return false;
     }
     if (this.deadlineReached) this.settlingBonusClaimedValue = true;
     this.activeJackpotTicket = ticket;
@@ -670,6 +682,7 @@ export class PachiSession {
     this.worldValue.setAttackerOpen(true);
     this.emit("jackpot-start", { score: this.scoreValue, opened: true });
     this.emit("rush-start", { rushRemaining: this.rushRemainingValue });
+    return true;
   }
 
   private advanceJackpot(deltaSeconds: number): void {
@@ -778,15 +791,11 @@ export class PachiSession {
 
   private maybeFinishSettling(): void {
     if (this.phaseValue !== "settling") return;
-    // Ball recovery has its own eight-second bound.  Clearing the physical
-    // board here does not discard already queued tickets or their animations;
-    // those are still allowed to finish and award their already-determined
-    // jackpot exactly once.
-    if (!this.ballCollectionSettled && this.settleElapsed >= PACHI_MAX_SETTLE_SECONDS) {
-      this.ballCollectionSettled = true;
-      this.worldValue.clearBalls("lifetime");
-      this.consumeWorldEvents();
-    }
+    // Each ball owns its eight-second lifetime in PachiWorld.  Do not clear
+    // the board from the session clock: terminal BONUS shots can be younger
+    // than eight seconds at T98 and must remain visible until their own
+    // lifetime, drain, or stuck/overflow rule removes them.  Manual finish
+    // and the 60-second session cap still use finishImmediately() below.
     const worldEmpty = this.worldValue.ballCount === 0;
     const spinDone = this.spinValue === null;
     if (
