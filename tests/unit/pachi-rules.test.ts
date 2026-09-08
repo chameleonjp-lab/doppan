@@ -265,6 +265,50 @@ describe("PachiSession rule boundaries", () => {
     expect(jackpot?.at).toBeLessThan(finished?.at ?? Number.POSITIVE_INFINITY);
   });
 
+  it("keeps a held firing intent through an open terminal BONUS, then clears it", () => {
+    const session = new PachiSession({ seed: 1, durationSeconds: 9 });
+    startFiring(session, 0.95);
+
+    let deadlineSnapshot: PachiSessionSnapshot | undefined;
+    for (let frame = 0; frame < 10 * 120; frame += 1) {
+      const snapshot = session.step(1000 / 120);
+      const events = session.drainEvents();
+      if (events.some((event) => event.type === "deadline")) {
+        deadlineSnapshot = snapshot;
+        break;
+      }
+    }
+
+    expect(deadlineSnapshot).toMatchObject({
+      phase: "settling",
+      rushStage: "open",
+      firing: true,
+    });
+    expect(deadlineSnapshot?.jackpotRemaining).toBeGreaterThan(0);
+
+    const firedAtDeadline = deadlineSnapshot?.stats.fired ?? 0;
+    let sawJackpotEnd = false;
+    let firedDuringTerminalBonus = 0;
+    let afterEndFired = firedAtDeadline;
+    for (let frame = 0; frame < 8 * 10; frame += 1) {
+      const snapshot = session.step(100);
+      const events = session.drainEvents();
+      firedDuringTerminalBonus += events.filter((event) => event.type === "fired").length;
+      if (events.some((event) => event.type === "jackpot-end")) {
+        sawJackpotEnd = true;
+        afterEndFired = snapshot.stats.fired;
+        expect(snapshot.phase).toBe("settling");
+        expect(snapshot.firing).toBe(false);
+        break;
+      }
+    }
+
+    expect(firedDuringTerminalBonus).toBeGreaterThan(0);
+    expect(sawJackpotEnd).toBe(true);
+    session.step(1500);
+    expect(session.snapshot().stats.fired).toBe(afterEndFired);
+  });
+
   it("keeps the finite BONUS visible, pauses FIFO, and ends after at most three rounds", () => {
     const session = new PachiSession({ seed: 19, durationSeconds: 40 });
     startFiring(session, 0.95);

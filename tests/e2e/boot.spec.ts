@@ -386,6 +386,56 @@ test.describe("90秒パチンコ体験", () => {
     await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
   });
 
+  test("keeps a held pointer firing through T90's open terminal BONUS", async ({ page }) => {
+    test.setTimeout(70_000);
+    await page.setViewportSize({ width: 402, height: 874 });
+    await installDeterministicClock(page);
+    // Seed 21 reaches an open second RUSH interval at T90 while still
+    // holding plenty of balls. This exercises the actual deadline event and
+    // pointer ownership rather than a direct session call.
+    await boot(page, "/?debug=1&seed=21");
+    await startGame(page);
+    await beginPointerFire(page);
+
+    let terminalBonus: RootDiagnostics | undefined;
+    for (let elapsed = 0; elapsed < 100_000; elapsed += clockStepMs) {
+      await runClock(page, clockStepMs);
+      const visible = await readRootDiagnostics(page);
+      if (visible.phase === "settling" && visible.rushStage === "open") {
+        terminalBonus = visible;
+        break;
+      }
+    }
+
+    expect(terminalBonus).toMatchObject({ phase: "settling", rushStage: "open" });
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "true");
+    const firedAtDeadline = Number(terminalBonus?.fired ?? "0");
+
+    await runClock(page, 1_000);
+    const whileOpen = await readRootDiagnostics(page);
+    expect(Number(whileOpen.fired ?? "0")).toBeGreaterThan(firedAtDeadline);
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "true");
+
+    await advanceUntil(
+      page,
+      async () => {
+        const visible = await readRootDiagnostics(page);
+        return visible.phase === "settling" && visible.rushStage !== "open";
+      },
+      8_000,
+      "terminal BONUS interval end",
+    );
+    await expect(page.locator(fireSelector)).toHaveAttribute("data-firing", "false");
+    const firedAtIntervalEnd = Number((await readRootDiagnostics(page)).fired ?? "0");
+
+    // The captured pointer is released at jackpot-end; no hidden firing intent
+    // may restart shots during the judgment/next queued-ticket boundary.
+    await runClock(page, 1_500);
+    expect(Number((await readRootDiagnostics(page)).fired ?? "0")).toBe(firedAtIntervalEnd);
+    await page.mouse.up();
+    await flushInputFrame(page);
+  });
+
   const runSeededMissRevealEvidence = async (
     page: Page,
     testInfo: TestInfo,

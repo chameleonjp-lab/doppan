@@ -269,7 +269,12 @@ function handleEvent(event: PachiSessionEvent, eventSnapshot = session.snapshot(
   }
   feedback = applyPachiFeedbackEvent(feedback, event, eventSnapshot);
   if (feedback.text) setText(ui.event, feedback.text);
-  if (event.type === "deadline") releaseFire();
+  if (event.type === "deadline" && !(eventSnapshot.rushStage === "open" && eventSnapshot.jackpotRemaining > 0)) {
+    releaseFire();
+  }
+  if (event.type === "jackpot-end" && eventSnapshot.phase === "settling") {
+    releaseFire();
+  }
 }
 
 function updatePocketLabels(snapshot: PachiSessionSnapshot): void {
