@@ -25,14 +25,21 @@ function advanceOneTick(session: PachiSession): readonly [PachiSessionSnapshot, 
   return [snapshot, session.drainEvents()];
 }
 
+function isTerminalBallEvent(event: PachiSessionEvent): boolean {
+  return event.type === "start-entry" || event.type === "side-entry" ||
+    event.type === "attacker-entry" || event.type === "drain" || event.type === "reclaimed";
+}
+
 describe("Pachi terminal settlement", () => {
   it("does not clear young terminal-BONUS balls at T98", () => {
     const session = startSeedOne();
     let deadlineAt: number | undefined;
     const firedAt = new Map<string, number>();
+    const terminalBallIds = new Set<string>();
     let terminalOpenCount = 0;
     let sawT98Boundary = false;
     let survivedT98 = false;
+    let t98YoungIds = new Set<string>();
 
     for (let tick = 0; tick < 110 * 120; tick += 1) {
       const before = session.snapshot();
@@ -41,35 +48,69 @@ describe("Pachi terminal settlement", () => {
       const [snapshot, events] = advanceOneTick(session);
       const deadline = events.find((event) => event.type === "deadline");
       if (deadline !== undefined) deadlineAt = deadline.at;
+
+      // A fired ID must be unique, and it is recorded before processing any
+      // pocket/reclaim events from the same fixed step. This makes the
+      // lifetime assertion independent of event ordering inside the step.
       for (const event of events) {
-        if (event.type === "fired" && event.ballId !== undefined) firedAt.set(event.ballId, event.at);
+        if (event.type !== "fired") continue;
+        expect(event.ballId).toBeDefined();
+        if (event.ballId === undefined) continue;
+        expect(firedAt.has(event.ballId)).toBe(false);
+        firedAt.set(event.ballId, event.at);
+      }
+
+      for (const event of events) {
         if (event.type === "jackpot-start" && event.opened === true && snapshot.phase === "settling") terminalOpenCount += 1;
-        if (event.type !== "reclaimed" || event.reason !== "lifetime") continue;
-        if (event.ballId === undefined) throw new Error("lifetime reclaim must identify its ball");
+        if (!isTerminalBallEvent(event)) continue;
+        if (event.ballId === undefined) throw new Error("terminal ball event must identify its ball");
         const fired = firedAt.get(event.ballId);
         expect(fired).toBeDefined();
+        expect(terminalBallIds.has(event.ballId)).toBe(false);
+        terminalBallIds.add(event.ballId);
+        if (event.type !== "reclaimed" || event.reason !== "lifetime") continue;
         // `fired` is emitted before the world advances its fixed step, while
         // the reclaim event is emitted after that step. One fixed step is the
         // timestamp boundary; the world age itself has already reached eight
         // seconds when the lifetime sweep removes the ball.
         if (fired !== undefined) expect(event.at - fired).toBeGreaterThanOrEqual(8 - FIXED_STEP_SECONDS - 1e-8);
       }
-      if (!sawT98Boundary && deadlineAt !== undefined && (tick + 1) * FIXED_STEP_SECONDS - deadlineAt >= 8) {
+
+      const boundaryAt = (tick + 1) * FIXED_STEP_SECONDS;
+      if (!sawT98Boundary && deadlineAt !== undefined && boundaryAt - deadlineAt >= 8) {
         sawT98Boundary = true;
         // The snapshot immediately before T98 contains shots fired during the
         // terminal BONUS. A session-wide clear would remove all of these at
         // this boundary, even though their individual age is well below 8s.
-        const freshBefore = before.balls.filter((ball) => ball.age < 0.1);
+        const freshBefore = before.balls.filter((ball) => {
+          const fired = firedAt.get(ball.id);
+          return fired !== undefined && boundaryAt - fired < 8;
+        });
         expect(freshBefore.length).toBeGreaterThan(0);
-        const freshIds = new Set(freshBefore.map((ball) => ball.id));
-        survivedT98 = snapshot.balls.some((ball) => freshIds.has(ball.id));
+        t98YoungIds = new Set(freshBefore.map((ball) => ball.id));
+
+        // This is the regression's decisive guard: a later shot cannot make
+        // the test pass if any of the exact young IDs were session-cleared.
+        const lifetimeReclaimsAtT98 = events.filter((event) =>
+          event.type === "reclaimed" && event.reason === "lifetime" &&
+          event.ballId !== undefined && t98YoungIds.has(event.ballId),
+        );
+        expect(lifetimeReclaimsAtT98).toHaveLength(0);
+        const terminalThisStep = new Set(
+          events.filter((event) => isTerminalBallEvent(event) && event.ballId !== undefined)
+            .map((event) => event.ballId as string),
+        );
+        const youngBallsExpectedToRemain = [...t98YoungIds].filter((id) => !terminalThisStep.has(id));
+        expect(youngBallsExpectedToRemain.length).toBeGreaterThan(0);
+        survivedT98 = youngBallsExpectedToRemain.every((id) => snapshot.balls.some((ball) => ball.id === id));
       }
-      if (sawT98Boundary && survivedT98) break;
+      if (sawT98Boundary && snapshot.phase === "result") break;
     }
 
     expect(deadlineAt).toBeDefined();
     expect(sawT98Boundary).toBe(true);
     expect(survivedT98).toBe(true);
+    expect(t98YoungIds.size).toBeGreaterThan(0);
     // Seed 1 reaches the first terminal BONUS. Continuation outcomes are
     // intentionally seed-dependent; this regression only needs an actual
     // terminal open to prove the T98 boundary while a younger shot exists.
@@ -171,3 +212,4 @@ describe("Pachi terminal settlement", () => {
     expect(getPachiVisualState(reveal)).toEqual({ target: "none", stage: "reveal" });
   });
 });
+
